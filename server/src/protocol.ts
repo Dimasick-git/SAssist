@@ -1,25 +1,16 @@
-// SAssist wire protocol — JSON over WebSocket.
-// Intentionally tiny + language-agnostic so a future Switch (C++/libnx) client
-// can speak it with zero ceremony.
-
+// SAssist wire protocol -- JSON over WebSocket.
 export const DEFAULT_CHANNELS = ["general", "code-help", "showtime"] as const;
 
 export interface ChatMessage {
-  id: string;
-  channel: string;
-  username: string;
-  text: string;     // raw text; may contain markdown / fenced code blocks
-  ts: number;       // epoch ms
+  id: string; channel: string; username: string; text: string; ts: number;
 }
 
-// ---- client -> server ----
 export type ClientMsg =
-  | { type: "join"; username: string }
+  | { type: "join"; token: string }
   | { type: "send"; channel: string; text: string }
   | { type: "switchChannel"; channel: string }
   | { type: "listChannels" };
 
-// ---- server -> client ----
 export type ServerMsg =
   | { type: "welcome"; userId: string; username: string; channels: string[] }
   | { type: "message"; message: ChatMessage }
@@ -29,9 +20,7 @@ export type ServerMsg =
   | { type: "error"; reason: string };
 
 export function parseClientMsg(raw: string): ClientMsg | null {
-  try {
-    const o = JSON.parse(raw);
-    if (o && typeof o.type === "string") return o as ClientMsg;
-  } catch { /* ignore */ }
+  try { const o = JSON.parse(raw); if (o && typeof o.type === "string") return o as ClientMsg; }
+  catch (e) { /* ignore */ }
   return null;
 }

@@ -26,23 +26,23 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Set up Gradle 8.9
+      - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '8.9'
 
-      - name: Ensure Gradle wrapper exists
-        run: |
-          if [ ! -f gradle/wrapper/gradle-wrapper.jar ]; then
-            gradle wrapper --gradle-version 8.9
-          fi
+      - name: Generate release keystore
+        run: keytool -genkeypair -dname "CN=SAssist,O=Ryazha,C=US" -keystore "$GITHUB_WORKSPACE/android/app/release.jks" -storepass sassist123 -keypass sassist123 -alias sassist -keyalg RSA -keysize 2048 -validity 10000
 
-      - name: Build debug APK
-        run: gradle assembleDebug --stacktrace --no-daemon
+      - name: Build signed release APK
+        env:
+          KEYSTORE_FILE: ${{ github.workspace }}/android/app/release.jks
+          KEYSTORE_PASSWORD: sassist123
+          KEY_ALIAS: sassist
+          KEY_PASSWORD: sassist123
+        run: gradle assembleRelease --stacktrace --no-daemon
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: SAssist-debug-apk
-          path: android/app/build/outputs/apk/debug/*.apk
+          name: SAssist-release-apk
+          path: android/app/build/outputs/apk/release/*.apk
           if-no-files-found: error

@@ -1,7 +1,7 @@
 {
   "name": "sassist-server",
-  "version": "0.1.0",
-  "description": "SAssist — coder-focused chat backend (WebSocket, JSON protocol). Portable for future Switch client.",
+  "version": "0.2.0",
+  "description": "SAssist - coder chat backend with phone/email OTP auth (WebSocket + REST). Portable for future Switch client.",
   "license": "MIT",
   "type": "commonjs",
   "main": "dist/src/index.js",
@@ -12,11 +12,13 @@
     "smoke": "node dist/scripts/test-client.js"
   },
   "dependencies": {
-    "ws": "^8.18.0"
+    "ws": "^8.18.0",
+    "nodemailer": "^6.9.15"
   },
   "devDependencies": {
     "@types/node": "^22.7.4",
     "@types/ws": "^8.5.12",
+    "@types/nodemailer": "^6.4.16",
     "tsx": "^4.19.1",
     "typescript": "^5.6.2"
   }

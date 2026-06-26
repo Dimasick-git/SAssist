@@ -2,58 +2,32 @@ package dev.ryazha.sassist.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Code
-import androidx.compose.material.icons.filled.Logout
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Terminal
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextField
-import androidx.compose.material3.TextFieldDefaults
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.ryazha.sassist.model.ChatMessage
-import dev.ryazha.sassist.ui.theme.BgDark
-import dev.ryazha.sassist.ui.theme.BgDarkest
-import dev.ryazha.sassist.ui.theme.BgInput
-import dev.ryazha.sassist.ui.theme.BgPanel
-import dev.ryazha.sassist.ui.theme.Blurple
-import dev.ryazha.sassist.ui.theme.OnlineGreen
-import dev.ryazha.sassist.ui.theme.TextMuted
-import dev.ryazha.sassist.ui.theme.TextPrimary
+import dev.ryazha.sassist.model.CHANNEL_META
+import dev.ryazha.sassist.ui.theme.*
 
 @Composable
 fun ChatScreen(
@@ -62,138 +36,112 @@ fun ChatScreen(
     messages: List<ChatMessage>,
     presence: Int,
     codeMode: Boolean,
+    e2ee: Boolean,
     onChannel: (String) -> Unit,
     onToggleCode: () -> Unit,
     onSend: (String) -> Unit,
     onOpenScripts: () -> Unit,
-    onDisconnect: () -> Unit
+    onBack: () -> Unit
 ) {
-    Row(Modifier.fillMaxSize().background(BgDark)) {
-        // ----- channel rail -----
-        Column(
-            Modifier.fillMaxHeight().width(96.dp).background(BgDarkest).padding(vertical = 12.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(6.dp)
+    var input by remember { mutableStateOf("") }
+    val listState = rememberLazyListState()
+    val title = CHANNEL_META[currentChannel]?.title ?: currentChannel
+
+    LaunchedEffect(messages.size) {
+        if (messages.isNotEmpty()) listState.animateScrollToItem(messages.size - 1)
+    }
+
+    val tf = TextFieldDefaults.colors(
+        focusedContainerColor = BgInput, unfocusedContainerColor = BgInput,
+        focusedTextColor = TextPrimary, unfocusedTextColor = TextPrimary,
+        cursorColor = Blurple, focusedIndicatorColor = BgInput, unfocusedIndicatorColor = BgInput
+    )
+
+    Column(Modifier.fillMaxSize().background(BgDarkest)) {
+        // Top bar
+        Row(
+            Modifier.fillMaxWidth().background(BgDark).padding(horizontal = 6.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("CHANNELS", color = TextMuted, fontSize = 9.sp, fontWeight = FontWeight.Bold)
-            Spacer(Modifier.height(4.dp))
+            IconButton(onClick = onBack) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = TextPrimary)
+            }
+            Column(Modifier.weight(1f)) {
+                Text("# " + title, color = TextPrimary, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                Text(presence.toString() + " online", color = OnlineGreen, fontSize = 11.sp)
+            }
+            if (e2ee) {
+                Row(
+                    Modifier.clip(RoundedCornerShape(8.dp)).background(BgPanel).padding(horizontal = 8.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Filled.Lock, contentDescription = "Encrypted", tint = OnlineGreen, modifier = Modifier.size(13.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("E2EE", color = OnlineGreen, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                }
+                Spacer(Modifier.width(4.dp))
+            }
+            IconButton(onClick = onOpenScripts) {
+                Icon(Icons.Filled.Terminal, contentDescription = "Scripts", tint = TextPrimary)
+            }
+        }
+
+        // Channel rail
+        Row(
+            Modifier.fillMaxWidth().background(BgDark).horizontalScroll(rememberScrollState())
+                .padding(horizontal = 10.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
             channels.forEach { ch ->
-                val active = ch == currentChannel
+                val sel = ch == currentChannel
+                val meta = CHANNEL_META[ch]
                 Box(
-                    Modifier.fillMaxWidth().padding(horizontal = 6.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(if (active) Blurple else Color.Transparent)
-                        .clickable { onChannel(ch) }
-                        .padding(vertical = 8.dp, horizontal = 6.dp),
+                    Modifier.clip(RoundedCornerShape(12.dp))
+                        .background(if (sel) Brush.linearGradient(listOf(Blurple, TgAccent)) else Brush.linearGradient(listOf(BgPanel, BgPanel)))
+                        .clickable { onChannel(ch) }.padding(horizontal = 12.dp, vertical = 7.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(
-                        "#" + ch, color = if (active) Color.White else TextMuted,
-                        fontSize = 11.sp, fontWeight = if (active) FontWeight.Bold else FontWeight.Normal,
-                        maxLines = 1
-                    )
+                    Text((meta?.emoji ?: "#") + " " + (meta?.title ?: ch), color = if (sel) TextPrimary else TextMuted, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                 }
             }
         }
 
-        // ----- main column -----
-        Column(Modifier.fillMaxSize()) {
-            // top bar
-            Row(
-                Modifier.fillMaxWidth().background(BgPanel).padding(horizontal = 14.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text("#", color = TextMuted, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                Spacer(Modifier.width(4.dp))
-                Text(currentChannel, color = TextPrimary, fontSize = 17.sp, fontWeight = FontWeight.Bold)
-                Spacer(Modifier.width(10.dp))
-                Box(Modifier.size(8.dp).clip(CircleShape).background(OnlineGreen))
-                Spacer(Modifier.width(4.dp))
-                Text("$presence online", color = TextMuted, fontSize = 12.sp)
-                Spacer(Modifier.weight(1f))
-                IconButton(onClick = onOpenScripts) {
-                    Icon(Icons.Filled.Terminal, contentDescription = "Scripts", tint = TextMuted)
-                }
-                IconButton(onClick = onDisconnect) {
-                    Icon(Icons.Filled.Logout, contentDescription = "Disconnect", tint = TextMuted)
-                }
-            }
-
-            // messages
-            val listState = rememberLazyListState()
-            LaunchedEffect(messages.size) {
-                if (messages.isNotEmpty()) listState.animateScrollToItem(messages.size - 1)
-            }
-            LazyColumn(
-                state = listState,
-                modifier = Modifier.weight(1f).fillMaxWidth(),
-                contentPadding = PaddingValues(vertical = 8.dp)
-            ) {
-                items(messages, key = { it.id.ifEmpty { it.ts.toString() + it.username } }) { msg ->
-                    MessageView(msg)
-                }
-            }
-
-            // input bar
-            InputBar(codeMode = codeMode, onToggleCode = onToggleCode, onSend = onSend)
-        }
-    }
-}
-
-@Composable
-private fun InputBar(codeMode: Boolean, onToggleCode: () -> Unit, onSend: (String) -> Unit) {
-    var text by remember { mutableStateOf("") }
-    Row(
-        Modifier.fillMaxWidth().background(BgPanel).padding(10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        // code-mode toggle
-        Box(
-            Modifier.size(42.dp).clip(RoundedCornerShape(10.dp))
-                .background(if (codeMode) Blurple else BgInput)
-                .clickable { onToggleCode() },
-            contentAlignment = Alignment.Center
+        // Messages
+        LazyColumn(
+            state = listState,
+            modifier = Modifier.weight(1f).fillMaxWidth(),
+            contentPadding = PaddingValues(vertical = 8.dp)
         ) {
-            Icon(Icons.Filled.Code, contentDescription = "Code mode",
-                tint = if (codeMode) Color.White else TextMuted)
+            items(messages, key = { it.id }) { msg ->
+                Box(Modifier.animateItem()) { MessageView(msg) }
+            }
         }
 
-        TextField(
-            value = text, onValueChange = { text = it },
-            modifier = Modifier.weight(1f),
-            placeholder = {
-                Text(if (codeMode) "paste code…  (sent as ```block```)" else "Message",
-                    color = TextMuted)
-            },
-            textStyle = androidx.compose.ui.text.TextStyle(
-                color = TextPrimary,
-                fontFamily = if (codeMode) FontFamily.Monospace else FontFamily.Default,
-                fontSize = 15.sp
-            ),
-            shape = RoundedCornerShape(12.dp),
-            singleLine = !codeMode,
-            keyboardOptions = KeyboardOptions.Default,
-            colors = TextFieldDefaults.colors(
-                focusedContainerColor = BgInput, unfocusedContainerColor = BgInput,
-                focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent,
-                cursorColor = Blurple
+        // Input
+        Row(
+            Modifier.fillMaxWidth().background(BgDark).padding(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(onClick = onToggleCode) {
+                Icon(Icons.Filled.Code, contentDescription = "Code mode", tint = if (codeMode) TgAccent else TextMuted)
+            }
+            OutlinedTextField(
+                value = input, onValueChange = { input = it },
+                placeholder = { Text(if (codeMode) "Paste code…" else "Message…", color = TextMuted) },
+                modifier = Modifier.weight(1f), colors = tf, shape = RoundedCornerShape(20.dp),
+                maxLines = if (codeMode) 6 else 4,
+                keyboardOptions = KeyboardOptions(autoCorrect = !codeMode)
             )
-        )
-
-        val send = {
-            val t = text.trim()
-            if (t.isNotEmpty()) {
-                val payload = if (codeMode) "```\n" + text + "\n```" else t
-                onSend(payload)
-                text = ""
-            }
-        }
-        Box(
-            Modifier.size(46.dp).clip(CircleShape).background(Blurple).clickable { send() },
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send", tint = Color.White)
+            Spacer(Modifier.width(6.dp))
+            IconButton(
+                onClick = {
+                    val t = input.trim()
+                    if (t.isNotEmpty()) {
+                        val payload = if (codeMode) "\n```\n" + t + "\n```\n" else t
+                        onSend(payload); input = ""
+                    }
+                }
+            ) { Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send", tint = Blurple) }
         }
     }
 }

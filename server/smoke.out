@@ -1,0 +1,7 @@
+REQUEST: 200 {"ok":true,"delivered":false,"devCode":"742474"}
+VERIFY-BAD: 401 {"ok":false,"error":"invalid or expired code"}
+VERIFY-OK: 200 {"ok":true,"token":"eyJ1aWQiOiJ1X2I2NmUwZTMxYjdlOCIsImlhdCI6MTc4MjUxMDAzODk4NCwiZXhwIjoxNzg1MTAyMDM4OTg0fQ.zuZUGqCYZMsUDOX-4yrXZOPXt8w8iiEldziTE4uepXE","user":{"id":"u_b66e0e31b7e8","username":"Coder","identifier":"coder@example.com"}}
+WELCOME user: Coder channels: general,code-help,showtime
+ECHO: Coder: hello ```code```
+NO-TOKEN rejected: auth required
+ALL_SMOKE_OK
