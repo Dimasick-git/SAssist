@@ -1,0 +1,23 @@
+{
+  "name": "sassist-server",
+  "version": "0.1.0",
+  "description": "SAssist — coder-focused chat backend (WebSocket, JSON protocol). Portable for future Switch client.",
+  "license": "MIT",
+  "type": "commonjs",
+  "main": "dist/src/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/src/index.js",
+    "dev": "tsx watch src/index.ts",
+    "smoke": "node dist/scripts/test-client.js"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.4",
+    "@types/ws": "^8.5.12",
+    "tsx": "^4.19.1",
+    "typescript": "^5.6.2"
+  }
+}

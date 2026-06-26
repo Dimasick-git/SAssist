@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="bg_darkest">#1E1F22</color>
+    <color name="bg_dark">#2B2D31</color>
+    <color name="bg_panel">#313338</color>
+    <color name="blurple">#5865F2</color>
+    <color name="tg_accent">#229ED9</color>
+    <color name="white">#FFFFFF</color>
+    <color name="black">#000000</color>
+</resources>

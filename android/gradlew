@@ -1,0 +1,3 @@
+#!/usr/bin/env sh
+# Placeholder. CI uses the gradle/actions setup. For local dev run: gradle wrapper --gradle-version 8.9
+exec gradle "$@"
