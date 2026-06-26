@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -108,7 +109,7 @@ fun ScriptScreen(
 
         // sample chips
         Row(
-            Modifier.fillMaxWidth().horizontalScrollCompat().padding(horizontal = 12.dp, vertical = 8.dp),
+            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             SAMPLES.forEach { (name, snippet) ->
@@ -149,7 +150,3 @@ fun ScriptScreen(
     }
 }
 
-// tiny helper so we don't need extra imports at call site
-@Composable
-private fun Modifier.horizontalScrollCompat(): Modifier =
-    this.then(androidx.compose.foundation.horizontalScroll(rememberScrollState()))
