@@ -38,7 +38,7 @@ class Session(context: Context) {
         set(v) { prefs.edit().putString("username", v).apply() }
 
     var serverUrl: String
-        get() = prefs.getString("serverUrl", "ws://10.0.2.2:8080") ?: "ws://10.0.2.2:8080"
+        get() = prefs.getString("serverUrl", "ws://192.168.1.107:8080") ?: "ws://192.168.1.107:8080"
         set(v) { prefs.edit().putString("serverUrl", v).apply() }
 
     fun roomKey(channel: String): String =
