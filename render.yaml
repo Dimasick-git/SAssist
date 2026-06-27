@@ -1,0 +1,30 @@
+# Render.com Blueprint -- deploys the SAssist server to a public HTTPS/WSS URL.
+# How to deploy:
+#   1. Push this repo to GitHub (done).
+#   2. Go to https://render.com -> New -> Blueprint -> connect the SAssist repo.
+#   3. Render reads this file and creates the service. Click Apply.
+#   4. You get a URL like https://sassist.onrender.com  ->  use wss://sassist.onrender.com in the app.
+services:
+  - type: web
+    name: sassist
+    runtime: docker
+    repo: https://github.com/Dimasick-git/SAssist
+    dockerfilePath: ./server/Dockerfile
+    dockerContext: ./server
+    plan: free
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: PORT
+        value: 8080
+      - key: AUTH_SECRET
+        generateValue: true        # persisted by Render so tokens survive restarts
+      - key: PREMIUM_CODE
+        value: RYAZHA-GOLD
+      # Optional e-mail OTP delivery (otherwise dev code is returned):
+      # - key: SMTP_HOST
+      #   sync: false
+      # - key: SMTP_USER
+      #   sync: false
+      # - key: SMTP_PASS
+      #   sync: false

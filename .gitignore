@@ -15,3 +15,6 @@ server/dist/
 # OS
 .DS_Store
 Thumbs.db
+
+# server
+server/data/
