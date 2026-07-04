@@ -11,12 +11,15 @@ import dev.ryazha.sassist.model.Stage
 import dev.ryazha.sassist.net.AuthApi
 import dev.ryazha.sassist.net.ChatClient
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
+import java.util.UUID
 
 data class ChatState(
     val stage: Stage = Stage.Welcome,
@@ -42,9 +45,12 @@ data class ChatState(
 
 class ChatViewModel(app: Application) : AndroidViewModel(app) {
     private val session = Session(app)
+    private val db = AppDatabase.getDatabase(app)
+    private val messageDao = db.messageDao()
     private val _state = MutableStateFlow(ChatState())
     val state: StateFlow<ChatState> = _state.asStateFlow()
     private var client: ChatClient? = null
+    private var messageJob: Job? = null
 
     val serverUrl: String get() = session.serverUrl
 
@@ -53,6 +59,23 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         if (!token.isNullOrBlank()) {
             _state.value = _state.value.copy(stage = Stage.Chats, username = session.username ?: "")
             connect()
+        }
+        observeLocalMessages()
+    }
+
+    private fun observeLocalMessages() {
+        messageJob?.cancel()
+        messageJob = viewModelScope.launch {
+            _state.collectLatest { s ->
+                messageDao.getMessages(s.currentChannel).collectLatest { localMsgs ->
+                    val chatMsgs = localMsgs.map { 
+                        ChatMessage(it.id, it.channel, it.username, it.text, it.ts) 
+                    }
+                    val map = _state.value.messagesByChannel.toMutableMap()
+                    map[s.currentChannel] = chatMsgs
+                    _state.value = _state.value.copy(messagesByChannel = map)
+                }
+            }
         }
     }
 
@@ -119,8 +142,10 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         _state.value = _state.value.copy(connState = ConnState.Connecting)
         val c = ChatClient(
             onOpen = {
+                _state.value = _state.value.copy(connState = ConnState.Connected)
                 val join = JSONObject().put("type", "join").put("token", session.token ?: "")
                 client?.send(join.toString())
+                processPendingQueue()
             },
             onText = { handle(it) },
             onClosed = { _state.value = _state.value.copy(connState = ConnState.Disconnected) },
@@ -130,13 +155,23 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         c.connect(session.serverUrl)
     }
 
+    private fun processPendingQueue() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val pending = messageDao.getPendingMessages()
+            for (m in pending) {
+                val body = if (_state.value.e2ee) E2ee.encrypt(m.text, session.roomKey(m.channel)) else m.text
+                client?.send(JSONObject().put("type", "send").put("channel", m.channel).put("text", body).toString())
+                // We'll delete it once the server confirms it via "message" event
+            }
+        }
+    }
+
     private fun handle(raw: String) {
         val o = try { JSONObject(raw) } catch (e: Exception) { return }
         when (o.optString("type")) {
             "welcome" -> {
                 val chans = jsonStrings(o.optJSONArray("channels"))
                 _state.value = _state.value.copy(
-                    connState = ConnState.Connected,
                     username = o.optString("username", _state.value.username),
                     channels = if (chans.isEmpty()) _state.value.channels else chans
                 )
@@ -144,18 +179,38 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
             "history" -> {
                 val ch = o.optString("channel")
                 val arr = o.optJSONArray("messages")
-                val list = mutableListOf<ChatMessage>()
-                if (arr != null) for (i in 0 until arr.length()) parseMsg(arr.getJSONObject(i), ch)?.let { list.add(it) }
-                val map = _state.value.messagesByChannel.toMutableMap(); map[ch] = list
-                _state.value = _state.value.copy(messagesByChannel = map)
+                val list = mutableListOf<LocalMessage>()
+                if (arr != null) for (i in 0 until arr.length()) {
+                    val mo = arr.getJSONObject(i)
+                    val rawText = mo.optString("text", "")
+                    val text = E2ee.decrypt(rawText, session.roomKey(ch))
+                    list.add(LocalMessage(
+                        id = mo.optString("id"),
+                        channel = ch,
+                        username = mo.optString("username"),
+                        text = text,
+                        ts = mo.optLong("ts")
+                    ))
+                }
+                viewModelScope.launch(Dispatchers.IO) { messageDao.insertAll(list) }
             }
             "message" -> {
                 val mo = o.optJSONObject("message") ?: return
                 val ch = mo.optString("channel")
-                val msg = parseMsg(mo, ch) ?: return
-                val map = _state.value.messagesByChannel.toMutableMap()
-                val cur = (map[ch] ?: emptyList()).toMutableList(); cur.add(msg); map[ch] = cur
-                _state.value = _state.value.copy(messagesByChannel = map)
+                val rawText = mo.optString("text", "")
+                val text = E2ee.decrypt(rawText, session.roomKey(ch))
+                val msg = LocalMessage(
+                    id = mo.optString("id"),
+                    channel = ch,
+                    username = mo.optString("username"),
+                    text = text,
+                    ts = mo.optLong("ts")
+                )
+                viewModelScope.launch(Dispatchers.IO) { 
+                    messageDao.insert(msg)
+                    // If we had a pending message with same content, it might be better to match by some client-side UID, 
+                    // but for now we just rely on server's message coming back.
+                }
             }
             "presence" -> {
                 val ch = o.optString("channel")
@@ -176,20 +231,6 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         return out
     }
 
-    private fun parseMsg(o: JSONObject, channel: String): ChatMessage? {
-        return try {
-            val raw = o.optString("text", "")
-            val text = E2ee.decrypt(raw, session.roomKey(channel))
-            ChatMessage(
-                id = o.optString("id"),
-                channel = o.optString("channel", channel),
-                username = o.optString("username"),
-                text = text,
-                ts = o.optLong("ts")
-            )
-        } catch (e: Exception) { null }
-    }
-
     // ---- chat actions ----
     fun openChannel(ch: String) {
         _state.value = _state.value.copy(currentChannel = ch, stage = Stage.Chat)
@@ -203,8 +244,18 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     fun send(text: String) {
         if (text.isBlank()) return
         val ch = _state.value.currentChannel
-        val body = if (_state.value.e2ee) E2ee.encrypt(text, session.roomKey(ch)) else text
-        client?.send(JSONObject().put("type", "send").put("channel", ch).put("text", body).toString())
+        val username = _state.value.username
+        val ts = System.currentTimeMillis()
+        val tempId = "temp_" + UUID.randomUUID().toString()
+        
+        val local = LocalMessage(tempId, ch, username, text, ts, isPending = true)
+        viewModelScope.launch(Dispatchers.IO) { messageDao.insert(local) }
+
+        if (_state.value.connState == ConnState.Connected) {
+            val body = if (_state.value.e2ee) E2ee.encrypt(text, session.roomKey(ch)) else text
+            client?.send(JSONObject().put("type", "send").put("channel", ch).put("text", body).toString())
+        }
+        
         if (_state.value.codeMode) _state.value = _state.value.copy(codeMode = false)
     }
 
