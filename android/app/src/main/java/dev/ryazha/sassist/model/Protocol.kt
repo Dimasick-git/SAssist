@@ -3,12 +3,26 @@ package dev.ryazha.sassist.model
 import kotlinx.serialization.Serializable
 
 @Serializable
+data class MediaRef(
+    val id: String,
+    val kind: String, // "image" | "video" | "file"
+    val mime: String,
+    val name: String,
+    val size: Long,
+    val width: Int? = null,
+    val height: Int? = null
+)
+
+@Serializable
 data class ChatMessage(
     val id: String = "",
     val channel: String = "",
     val username: String = "",
     val text: String = "",
-    val ts: Long = 0L
+    val ts: Long = 0L,
+    val media: MediaRef? = null,
+    val isPending: Boolean = false,
+    val isFailed: Boolean = false
 )
 
 enum class ConnState { Disconnected, Connecting, Connected, Error }

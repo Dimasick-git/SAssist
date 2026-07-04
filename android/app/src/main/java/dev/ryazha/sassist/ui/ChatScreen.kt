@@ -35,11 +35,13 @@ fun ChatScreen(
     currentChannel: String,
     messages: List<ChatMessage>,
     presence: Int,
+    typingUser: String?,
     codeMode: Boolean,
     e2ee: Boolean,
     onChannel: (String) -> Unit,
     onToggleCode: () -> Unit,
     onSend: (String) -> Unit,
+    onTyping: () -> Unit,
     onOpenScripts: () -> Unit,
     onBack: () -> Unit
 ) {
@@ -117,6 +119,15 @@ fun ChatScreen(
             }
         }
 
+        if (typingUser != null) {
+            Text(
+                text = "$typingUser is typing...",
+                color = OnlineGreen,
+                fontSize = 11.sp,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+            )
+        }
+
         // Input
         Row(
             Modifier.fillMaxWidth().background(BgDark).padding(8.dp),
@@ -126,7 +137,10 @@ fun ChatScreen(
                 Icon(Icons.Filled.Code, contentDescription = "Code mode", tint = if (codeMode) TgAccent else TextMuted)
             }
             OutlinedTextField(
-                value = input, onValueChange = { input = it },
+                value = input, onValueChange = { 
+                    input = it
+                    if (it.isNotEmpty()) onTyping()
+                },
                 placeholder = { Text(if (codeMode) "Paste code…" else "Message…", color = TextMuted) },
                 modifier = Modifier.weight(1f), colors = tf, shape = RoundedCornerShape(20.dp),
                 maxLines = if (codeMode) 6 else 4,

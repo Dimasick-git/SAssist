@@ -28,6 +28,7 @@ data class ChatState(
     val currentChannel: String = "general",
     val messagesByChannel: Map<String, List<ChatMessage>> = emptyMap(),
     val presenceByChannel: Map<String, Int> = emptyMap(),
+    val typingByChannel: Map<String, String?> = emptyMap(), // channel -> username
     val username: String = "",
     val authMethod: AuthMethod = AuthMethod.Email,
     val pendingIdentifier: String = "",
@@ -241,6 +242,23 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                 val map = _state.value.presenceByChannel.toMutableMap(); map[ch] = count
                 _state.value = _state.value.copy(presenceByChannel = map)
             }
+            "typing" -> {
+                val ch = o.optString("channel")
+                val user = o.optJSONObject("user")?.optString("displayName")
+                if (user != _state.value.username) {
+                    val map = _state.value.typingByChannel.toMutableMap()
+                    map[ch] = user
+                    _state.value = _state.value.copy(typingByChannel = map)
+                    viewModelScope.launch {
+                        kotlinx.coroutines.delay(3000)
+                        if (_state.value.typingByChannel[ch] == user) {
+                            val newMap = _state.value.typingByChannel.toMutableMap()
+                            newMap[ch] = null
+                            _state.value = _state.value.copy(typingByChannel = newMap)
+                        }
+                    }
+                }
+            }
             "channels" -> {
                 val chans = jsonStrings(o.optJSONArray("channels"))
                 if (chans.isNotEmpty()) _state.value = _state.value.copy(channels = chans)
@@ -263,6 +281,11 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     fun openScripts() { _state.value = _state.value.copy(returnStage = _state.value.stage, stage = Stage.Scripts) }
     fun closeScripts() { _state.value = _state.value.copy(stage = _state.value.returnStage) }
     fun toggleCode() { _state.value = _state.value.copy(codeMode = !_state.value.codeMode) }
+
+    fun sendTyping() {
+        val ch = _state.value.currentChannel
+        client?.send(JSONObject().put("type", "typing").put("channel", ch).toString())
+    }
 
     fun send(text: String) {
         if (text.isBlank()) return

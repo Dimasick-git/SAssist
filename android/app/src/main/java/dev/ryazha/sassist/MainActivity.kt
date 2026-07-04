@@ -80,9 +80,11 @@ class MainActivity : ComponentActivity() {
                         Stage.Chat -> ChatScreen(
                             channels = state.channels, currentChannel = state.currentChannel,
                             messages = state.messages, presence = state.presence,
+                            typingUser = state.typingByChannel[state.currentChannel],
                             codeMode = state.codeMode, e2ee = state.e2ee,
                             onChannel = { vm.openChannel(it) }, onToggleCode = { vm.toggleCode() },
-                            onSend = { vm.send(it) }, onOpenScripts = { vm.openScripts() },
+                            onSend = { vm.send(it) }, onTyping = { vm.sendTyping() },
+                            onOpenScripts = { vm.openScripts() },
                             onBack = { vm.backToChats() }
                         )
                         Stage.Scripts -> ScriptScreen(
