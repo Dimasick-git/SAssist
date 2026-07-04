@@ -140,6 +140,15 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     private fun connect() {
         if (client != null) return
         _state.value = _state.value.copy(connState = ConnState.Connecting)
+        
+        var url = session.serverUrl
+        if (url.startsWith("http")) {
+            url = url.replace("http://", "ws://").replace("https://", "wss://")
+        }
+        if (!url.contains("://")) {
+            url = "wss://" + url
+        }
+
         val c = ChatClient(
             onOpen = {
                 _state.value = _state.value.copy(connState = ConnState.Connected)
@@ -148,11 +157,25 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                 processPendingQueue()
             },
             onText = { handle(it) },
-            onClosed = { _state.value = _state.value.copy(connState = ConnState.Disconnected) },
-            onFailure = { _state.value = _state.value.copy(connState = ConnState.Error) }
+            onClosed = { 
+                _state.value = _state.value.copy(connState = ConnState.Disconnected)
+                reconnect()
+            },
+            onFailure = { 
+                _state.value = _state.value.copy(connState = ConnState.Error)
+                reconnect()
+            }
         )
         client = c
-        c.connect(session.serverUrl)
+        c.connect(url)
+    }
+
+    private fun reconnect() {
+        client = null
+        viewModelScope.launch {
+            kotlinx.coroutines.delay(5000)
+            if (session.token != null) connect()
+        }
     }
 
     private fun processPendingQueue() {
