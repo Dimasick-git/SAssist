@@ -12,10 +12,11 @@ primary_region = "fra"
 [build]
   dockerfile = "server/Dockerfile"
 
+# Secrets (never commit them):  fly secrets set PREMIUM_CODE=... SMTP_HOST=... etc.
+# AUTH_SECRET is optional -- the server generates one and keeps it on the /data volume.
 [env]
   PORT = "8080"
   DATA_DIR = "/data"
-  PREMIUM_CODE = "RYAZHA-GOLD"
 
 [[mounts]]
   source = "sassist_data"

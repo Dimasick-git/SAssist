@@ -11,7 +11,13 @@ services:
     repo: https://github.com/Dimasick-git/SAssist
     dockerfilePath: ./server/Dockerfile
     dockerContext: ./server
-    plan: free
+    # NOTE: the free plan has no persistent disk -- users/messages/media reset
+    # on every deploy there. The starter plan + disk below keeps everything.
+    plan: starter
+    disk:
+      name: sassist-data
+      mountPath: /data
+      sizeGB: 1
     healthCheckPath: /health
     autoDeploy: true
     envVars:
@@ -19,8 +25,9 @@ services:
         value: 8080
       - key: AUTH_SECRET
         generateValue: true        # persisted by Render so tokens survive restarts
-      - key: PREMIUM_CODE
-        value: RYAZHA-GOLD
+      # Set in the Render dashboard to enable premium @username claims:
+      # - key: PREMIUM_CODE
+      #   sync: false
       # Optional e-mail OTP delivery (otherwise dev code is returned):
       # - key: SMTP_HOST
       #   sync: false

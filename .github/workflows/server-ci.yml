@@ -1,0 +1,58 @@
+name: Server CI
+
+on:
+  push:
+    branches: [ main ]
+    paths: [ 'server/**', '.github/workflows/server-ci.yml' ]
+  pull_request:
+    paths: [ 'server/**', '.github/workflows/server-ci.yml' ]
+  workflow_dispatch:
+
+jobs:
+  build-and-smoke:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+
+      - name: Install & build
+        run: |
+          npm ci
+          npm run build
+
+      - name: Start server (production mode)
+        run: |
+          mkdir -p "$RUNNER_TEMP/sadata"
+          NODE_ENV=production DATA_DIR="$RUNNER_TEMP/sadata" PORT=8080 node dist/src/index.js > "$RUNNER_TEMP/server.log" 2>&1 &
+          echo $! > "$RUNNER_TEMP/server.pid"
+          for i in $(seq 1 30); do curl -sf http://127.0.0.1:8080/health && break; sleep 1; done
+
+      - name: Smoke test (auth, ws, clientId dedupe)
+        run: |
+          node smoke.js | tee "$RUNNER_TEMP/smoke1.out"
+          grep -q ALL_SMOKE_OK "$RUNNER_TEMP/smoke1.out"
+          grep -oP '(?<=^SMOKE_TOKEN=).*' "$RUNNER_TEMP/smoke1.out" > "$RUNNER_TEMP/token"
+
+      - name: Restart server with same DATA_DIR
+        run: |
+          kill "$(cat "$RUNNER_TEMP/server.pid")"
+          sleep 2
+          NODE_ENV=production DATA_DIR="$RUNNER_TEMP/sadata" PORT=8080 node dist/src/index.js >> "$RUNNER_TEMP/server.log" 2>&1 &
+          echo $! > "$RUNNER_TEMP/server.pid"
+          for i in $(seq 1 30); do curl -sf http://127.0.0.1:8080/health && break; sleep 1; done
+
+      - name: Persistence smoke (messages + token survive restart)
+        run: |
+          SMOKE_PHASE=2 SMOKE_TOKEN="$(cat "$RUNNER_TEMP/token")" node smoke.js
+
+      - name: Server log on failure
+        if: failure()
+        run: cat "$RUNNER_TEMP/server.log" || true

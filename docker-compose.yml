@@ -1,0 +1,39 @@
+# Self-host SAssist with one command:
+#   docker compose up -d --build
+# -> server on http://localhost:8080 (use ws://<host>:8080 in the app).
+# Everything durable (users, messages, media, auth secret) lives in the
+# sassist_data volume, so restarts and upgrades lose nothing.
+services:
+  sassist:
+    build: ./server
+    ports:
+      - "8080:8080"
+    volumes:
+      - sassist_data:/data
+    restart: unless-stopped
+    environment:
+      PORT: 8080
+      # AUTH_SECRET is auto-generated and persisted in /data if unset.
+      # AUTH_SECRET: ""
+      # Set to enable premium @username claims:
+      # PREMIUM_CODE: ""
+      # Real e-mail OTP delivery (otherwise the code is shown in the app):
+      # SMTP_HOST: ""
+      # SMTP_PORT: "587"
+      # SMTP_USER: ""
+      # SMTP_PASS: ""
+      # SMTP_FROM: ""
+      # SMS OTP delivery via Twilio:
+      # TWILIO_SID: ""
+      # TWILIO_TOKEN: ""
+      # TWILIO_FROM: ""
+      # Refuse to hand out codes when no delivery channel is configured:
+      # DISABLE_DEV_CODE: "1"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  sassist_data:
