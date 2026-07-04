@@ -5,6 +5,7 @@ import { WebSocketServer, WebSocket } from "ws";
 import { DEFAULT_CHANNELS, ChatMessage, ServerMsg, PublicUser, MediaRef, parseClientMsg } from "./protocol";
 import { requestOtp, verifyOtp, login, signToken, userForToken, claimHandle, handleStatus, updateProfile, claimPremium, getUser, toPublic } from "./auth";
 import { sendCode } from "./notify";
+import * as db from "./db";
 
 const PORT = Number(process.env.PORT) || 8080;
 const HISTORY_LIMIT = 100;
@@ -16,8 +17,6 @@ try { fs.mkdirSync(MEDIA_DIR, { recursive: true }); } catch (e) { /* ignore */ }
 interface Client { id: string; ws: WebSocket; channel: string; }
 const clients = new Map<WebSocket, Client>();
 const channels = new Set<string>(DEFAULT_CHANNELS);
-const history = new Map<string, ChatMessage[]>();
-for (const ch of channels) history.set(ch, []);
 
 let seq = 0;
 function newId(p: string): string { return p + "_" + Date.now().toString(36) + "_" + (seq++).toString(36); }
@@ -202,7 +201,7 @@ wss.on("connection", (ws) => {
         clients.set(ws, c);
         const pub = toPublic(user);
         send(ws, { type: "welcome", user: pub, userId: pub.id, username: pub.displayName, channels: [...channels] });
-        send(ws, { type: "history", channel: c.channel, messages: history.get(c.channel) || [] });
+        send(ws, { type: "history", channel: c.channel, messages: db.getHistory(c.channel, HISTORY_LIMIT) });
         broadcastPresence(c.channel);
         break;
       }
@@ -212,8 +211,19 @@ wss.on("connection", (ws) => {
         const target = (msg as any).channel;
         if (!channels.has(target)) { send(ws, { type: "error", reason: "no such channel" }); break; }
         const prev = client.channel; client.channel = target;
-        send(ws, { type: "history", channel: target, messages: history.get(target) || [] });
+        send(ws, { type: "history", channel: target, messages: db.getHistory(target, HISTORY_LIMIT) });
         broadcastPresence(prev); broadcastPresence(target);
+        break;
+      }
+      case "history": {
+        if (!client) { send(ws, { type: "error", reason: "join first" }); break; }
+        const channel = "" + ((msg as any).channel || client.channel);
+        if (!channels.has(channel)) { send(ws, { type: "error", reason: "no such channel" }); break; }
+        const sinceRaw = Number((msg as any).since);
+        const since = Number.isFinite(sinceRaw) && sinceRaw > 0 ? sinceRaw : undefined;
+        const limitRaw = Number((msg as any).limit);
+        const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? limitRaw : (since !== undefined ? 200 : HISTORY_LIMIT);
+        send(ws, { type: "history", channel, messages: db.getHistory(channel, limit, since), since });
         break;
       }
       case "typing": {
@@ -225,15 +235,16 @@ wss.on("connection", (ws) => {
       case "react": {
         if (!client) break;
         const channel = (msg as any).channel || client.channel;
-        const buf = history.get(channel); if (!buf) break;
-        const m = buf.find((x) => x.id === (msg as any).messageId); if (!m) break;
+        const m = db.getMessageById("" + (msg as any).messageId);
+        if (!m || m.channel !== channel) break;
         const emoji = ("" + (msg as any).emoji).slice(0, 8);
-        if (!m.reactions) m.reactions = {};
-        const arr = m.reactions[emoji] || [];
+        const reactions = m.reactions || {};
+        const arr = reactions[emoji] || [];
         const i = arr.indexOf(client.id);
         if (i >= 0) arr.splice(i, 1); else arr.push(client.id);
-        if (arr.length) m.reactions[emoji] = arr; else delete m.reactions[emoji];
-        broadcastChannel(channel, { type: "reaction", channel, messageId: m.id, reactions: m.reactions });
+        if (arr.length) reactions[emoji] = arr; else delete reactions[emoji];
+        db.updateReactions(m.id, reactions);
+        broadcastChannel(channel, { type: "reaction", channel, messageId: m.id, reactions });
         break;
       }
       case "send": {
@@ -243,6 +254,7 @@ wss.on("connection", (ws) => {
         const text = ((msg as any).text || "").slice(0, 8000);
         const media: MediaRef | undefined = (msg as any).media;
         if (!text.trim() && !media) break;
+        const clientId = ("" + ((msg as any).clientId || "")).slice(0, 64) || undefined;
         const pub = publicOf(client.id);
         const message: ChatMessage = {
           id: newId("m"), channel, userId: pub.id, username: pub.displayName,
@@ -253,11 +265,19 @@ wss.on("connection", (ws) => {
         };
         // Secret messages are ephemeral: delivered live, never stored.
         if (!message.secret) {
-          const buf = history.get(channel)!;
-          buf.push(message);
-          if (buf.length > HISTORY_LIMIT) buf.splice(0, buf.length - HISTORY_LIMIT);
+          if (db.saveMessage(message, clientId) === "duplicate") {
+            // Offline-queue re-send whose original echo was lost: don't store
+            // or re-broadcast, just re-echo the stored copy to the sender so
+            // it can reconcile its pending row.
+            const existing = clientId && db.findByClientId(client.id, clientId);
+            if (existing) send(ws, { type: "message", message: { ...existing, clientId } });
+            break;
+          }
         }
-        broadcastChannel(channel, { type: "message", message });
+        // Everyone else gets the message without clientId; the sender's echo
+        // carries it so the client can match its optimistic local copy.
+        broadcastChannel(channel, { type: "message", message }, ws);
+        send(ws, { type: "message", message: clientId ? { ...message, clientId } : message });
         break;
       }
     }

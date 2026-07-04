@@ -1,6 +1,5 @@
 import crypto from "crypto";
-import fs from "fs";
-import path from "path";
+import { loadOrCreateSecret, upsertUser, loadAllUsers, importUsersJsonIfPresent } from "./db";
 
 export interface User {
   id: string;
@@ -20,10 +19,11 @@ export interface PublicUser {
 
 interface Otp { hash: string; salt: string; expires: number; tries: number; }
 
-const DATA_DIR = process.env.DATA_DIR || path.join(process.cwd(), "data");
-const USERS_FILE = path.join(DATA_DIR, "users.json");
-const SECRET = process.env.AUTH_SECRET || crypto.randomBytes(32).toString("hex");
-const PREMIUM_CODE = process.env.PREMIUM_CODE || "RYAZHA-GOLD";
+// Env AUTH_SECRET wins; otherwise a secret is generated once and persisted in
+// DATA_DIR so tokens survive restarts with zero configuration.
+const SECRET = loadOrCreateSecret();
+// Premium is opt-in: without PREMIUM_CODE in the environment nobody can claim it.
+const PREMIUM_CODE = (process.env.PREMIUM_CODE || "").trim();
 const OTP_TTL = 5 * 60 * 1000;
 const TOKEN_TTL = 30 * 24 * 60 * 60 * 1000;
 const MAX_TRIES = 5;
@@ -34,24 +34,14 @@ const users = new Map<string, User>();
 const handles = new Map<string, string>(); // handle(lowercase) -> userId  (reservation index)
 
 function load() {
-  try {
-    const raw = fs.readFileSync(USERS_FILE, "utf8");
-    for (const u of JSON.parse(raw) as User[]) {
-      // migrate older records
-      if ((u as any).username && !u.displayName) u.displayName = (u as any).username;
-      if (!u.color) u.color = COLORS[Math.floor(Math.random() * COLORS.length)];
-      if (typeof u.premium !== "boolean") u.premium = false;
-      if (!u.handle) u.handle = "";
-      if (!u.bio) u.bio = "";
-      users.set(u.id, u);
-      if (u.handle) handles.set(u.handle.toLowerCase(), u.id);
-    }
-  } catch (e) { /* no file yet */ }
+  const imported = importUsersJsonIfPresent();
+  if (imported) console.log("Imported " + imported + " user(s) from legacy users.json");
+  for (const u of loadAllUsers()) {
+    users.set(u.id, u);
+    if (u.handle) handles.set(u.handle.toLowerCase(), u.id);
+  }
 }
-function persist() {
-  try { fs.mkdirSync(DATA_DIR, { recursive: true }); fs.writeFileSync(USERS_FILE, JSON.stringify([...users.values()], null, 2)); }
-  catch (e) { /* ignore */ }
-}
+function persist(u: User) { upsertUser(u); }
 load();
 
 function b64url(buf: Buffer): string { return buf.toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, ""); }
@@ -101,7 +91,7 @@ export function handleStatus(raw: string): { valid: boolean; available: boolean;
 export function login(method: string, identifier: string, displayName: string): User {
   for (const u of users.values()) {
     if (u.identifier === identifier) {
-      if (displayName && displayName !== u.displayName) { u.displayName = displayName; persist(); }
+      if (displayName && displayName !== u.displayName) { u.displayName = displayName; persist(u); }
       return u;
     }
   }
@@ -113,7 +103,7 @@ export function login(method: string, identifier: string, displayName: string): 
     color: COLORS[Math.floor(Math.random() * COLORS.length)],
     bio: "", createdAt: Date.now()
   };
-  users.set(id, user); persist(); return user;
+  users.set(id, user); persist(user); return user;
 }
 
 export function claimHandle(userId: string, raw: string): { ok: boolean; error?: string; user?: User } {
@@ -126,7 +116,7 @@ export function claimHandle(userId: string, raw: string): { ok: boolean; error?:
   if (owner && owner !== userId) return { ok: false, error: "username already taken" };
   if (st.premiumOnly && !u.premium) return { ok: false, error: "short usernames are Premium-only" };
   if (u.handle) handles.delete(u.handle.toLowerCase());  // release old
-  u.handle = h; handles.set(h, userId); persist();
+  u.handle = h; handles.set(h, userId); persist(u);
   return { ok: true, user: u };
 }
 
@@ -136,14 +126,15 @@ export function updateProfile(userId: string, patch: { displayName?: string; bio
   if (typeof patch.displayName === "string" && patch.displayName.trim()) u.displayName = patch.displayName.trim().slice(0, 40);
   if (typeof patch.bio === "string") u.bio = patch.bio.slice(0, 200);
   if (typeof patch.color === "string" && /^[0-9A-Fa-f]{6}$/.test(patch.color)) u.color = patch.color.toUpperCase();
-  persist(); return { ok: true, user: u };
+  persist(u); return { ok: true, user: u };
 }
 
 export function claimPremium(userId: string, code: string): { ok: boolean; error?: string; user?: User } {
   const u = users.get(userId);
   if (!u) return { ok: false, error: "no user" };
+  if (!PREMIUM_CODE) return { ok: false, error: "premium codes are not enabled on this server" };
   if (("" + code).trim() !== PREMIUM_CODE) return { ok: false, error: "invalid premium code" };
-  u.premium = true; persist();
+  u.premium = true; persist(u);
   return { ok: true, user: u };
 }
 

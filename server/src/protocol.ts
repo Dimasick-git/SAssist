@@ -35,15 +35,17 @@ export interface ChatMessage {
   secret?: boolean;      // ephemeral / self-destruct
   ttl?: number;          // seconds to live after read (secret messages)
   reactions?: Record<string, string[]>;
+  clientId?: string;     // sender-supplied id, echoed back ONLY to the sender's socket
 }
 
 export type ClientMsg =
   | { type: "join"; token: string }
-  | { type: "send"; channel: string; text: string; media?: MediaRef; replyTo?: string; secret?: boolean; ttl?: number }
+  | { type: "send"; channel: string; text: string; clientId?: string; media?: MediaRef; replyTo?: string; secret?: boolean; ttl?: number }
   | { type: "switchChannel"; channel: string }
   | { type: "listChannels" }
   | { type: "typing"; channel: string }
-  | { type: "react"; channel: string; messageId: string; emoji: string };
+  | { type: "react"; channel: string; messageId: string; emoji: string }
+  | { type: "history"; channel: string; since?: number; limit?: number };  // incremental sync: ts >= since
 
 export type ServerMsg =
   | { type: "welcome"; user: PublicUser; userId: string; username: string; channels: string[] }
@@ -51,7 +53,7 @@ export type ServerMsg =
   | { type: "reaction"; channel: string; messageId: string; reactions: Record<string, string[]> }
   | { type: "presence"; channel: string; users: PublicUser[] }
   | { type: "typing"; channel: string; user: PublicUser }
-  | { type: "history"; channel: string; messages: ChatMessage[] }
+  | { type: "history"; channel: string; messages: ChatMessage[]; since?: number }
   | { type: "channels"; channels: string[] }
   | { type: "error"; reason: string };
 
