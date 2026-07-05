@@ -17,17 +17,23 @@ data class MediaRef(
 data class ChatMessage(
     val id: String = "",
     val channel: String = "",
+    val userId: String = "",
     val username: String = "",
+    val handle: String = "",
+    val premium: Boolean = false,
+    val color: String = "5865F2",
     val text: String = "",
     val ts: Long = 0L,
     val media: MediaRef? = null,
+    val replyTo: String? = null,
+    val reactions: Map<String, List<String>> = emptyMap(),
     val isPending: Boolean = false,
     val isFailed: Boolean = false
 )
 
 enum class ConnState { Disconnected, Connecting, Connected, Error }
 
-enum class Stage { Welcome, EnterIdentifier, EnterCode, Chats, Chat, Scripts }
+enum class Stage { Welcome, EnterIdentifier, EnterCode, Chats, Chat, Scripts, Profile }
 
 enum class AuthMethod { Phone, Email }
 

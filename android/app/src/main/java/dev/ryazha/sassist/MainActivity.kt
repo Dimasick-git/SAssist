@@ -24,6 +24,7 @@ import dev.ryazha.sassist.ui.AuthIdentifierScreen
 import dev.ryazha.sassist.ui.ChatScreen
 import dev.ryazha.sassist.ui.ChatsListScreen
 import dev.ryazha.sassist.ui.CodeScreen
+import dev.ryazha.sassist.ui.ProfileScreen
 import dev.ryazha.sassist.ui.ScriptScreen
 import dev.ryazha.sassist.ui.WelcomeScreen
 import dev.ryazha.sassist.ui.theme.BgDarkest
@@ -41,6 +42,7 @@ class MainActivity : ComponentActivity() {
                     when (state.stage) {
                         Stage.Chat -> vm.backToChats()
                         Stage.Scripts -> vm.closeScripts()
+                        Stage.Profile -> vm.closeProfile()
                         Stage.EnterCode -> vm.startAuth()
                         Stage.EnterIdentifier -> vm.goWelcome()
                         Stage.Chats -> { /* stay */ }
@@ -75,6 +77,7 @@ class MainActivity : ComponentActivity() {
                             username = state.username, channels = state.channels, connState = state.connState,
                             presence = state.presenceByChannel, preview = { vm.lastPreview(it) },
                             onOpen = { vm.openChannel(it) }, onScripts = { vm.openScripts() },
+                            onProfile = { vm.openProfile() },
                             onLogout = { vm.logout() }, onServer = { vm.setServerUrl(it) }
                         )
                         Stage.Chat -> ChatScreen(
@@ -82,10 +85,28 @@ class MainActivity : ComponentActivity() {
                             messages = state.messages, presence = state.presence,
                             typingUser = state.typingByChannel[state.currentChannel],
                             codeMode = state.codeMode, e2ee = state.e2ee,
+                            connState = state.connState, myUserId = state.userId,
+                            replyingTo = state.replyingTo, uploadBusy = state.uploadBusy,
+                            hasCustomKey = state.customKeyChannels.contains(state.currentChannel),
+                            mediaUrl = { vm.mediaUrl(it) },
                             onChannel = { vm.openChannel(it) }, onToggleCode = { vm.toggleCode() },
-                            onSend = { vm.send(it) }, onTyping = { vm.sendTyping() },
+                            onSend = { vm.send(it) }, onSendMedia = { vm.sendMedia(it) },
+                            onTyping = { vm.sendTyping() },
+                            onReact = { id, emoji -> vm.react(id, emoji) },
+                            onReply = { vm.startReply(it) }, onCancelReply = { vm.cancelReply() },
+                            onRetry = { vm.retryMessage(it) },
+                            onSetRoomKey = { vm.setRoomKey(it) },
                             onOpenScripts = { vm.openScripts() },
                             onBack = { vm.backToChats() }
+                        )
+                        Stage.Profile -> ProfileScreen(
+                            profile = state.profile,
+                            onSave = { n, b, c -> vm.saveProfile(n, b, c) },
+                            onCheckHandle = { vm.checkHandle(it) },
+                            onClaimHandle = { vm.claimHandle(it) },
+                            onClaimPremium = { vm.claimPremium(it) },
+                            onLogout = { vm.logout() },
+                            onBack = { vm.closeProfile() }
                         )
                         Stage.Scripts -> ScriptScreen(
                             lastMessage = state.messages.lastOrNull()?.text ?: "",

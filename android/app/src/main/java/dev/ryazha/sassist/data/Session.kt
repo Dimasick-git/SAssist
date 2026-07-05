@@ -37,12 +37,17 @@ class Session(context: Context) {
         get() = prefs.getString("username", null)
         set(v) { prefs.edit().putString("username", v).apply() }
 
+    // No baked-in default: the user enters their server on the sign-in screen.
     var serverUrl: String
-        get() = prefs.getString("serverUrl", "https://sassist.render.com") ?: "https://sassist.render.com"
+        get() = prefs.getString("serverUrl", "") ?: ""
         set(v) { prefs.edit().putString("serverUrl", v).apply() }
 
     fun roomKey(channel: String): String =
         prefs.getString("roomkey_" + channel, null) ?: ("sa-default-" + channel)
+
+    /** True once the user has set their own E2EE passphrase for this room. */
+    fun hasCustomRoomKey(channel: String): Boolean =
+        prefs.getString("roomkey_" + channel, null) != null
 
     fun setRoomKey(channel: String, key: String) {
         prefs.edit().putString("roomkey_" + channel, key).apply()

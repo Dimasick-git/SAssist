@@ -1,25 +1,55 @@
 package dev.ryazha.sassist.data
 
 import android.app.Application
+import android.net.Uri
+import android.provider.OpenableColumns
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.work.Constraints
+import androidx.work.ExistingWorkPolicy
+import androidx.work.NetworkType
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkManager
 import dev.ryazha.sassist.crypto.E2ee
 import dev.ryazha.sassist.model.AuthMethod
 import dev.ryazha.sassist.model.ChatMessage
 import dev.ryazha.sassist.model.ConnState
+import dev.ryazha.sassist.model.MediaRef
 import dev.ryazha.sassist.model.Stage
 import dev.ryazha.sassist.net.AuthApi
 import dev.ryazha.sassist.net.ChatClient
+import dev.ryazha.sassist.net.ConnectivityObserver
+import dev.ryazha.sassist.net.MediaApi
+import dev.ryazha.sassist.work.SendQueueWorker
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
 import org.json.JSONObject
 import java.util.UUID
+import kotlin.random.Random
+
+data class ProfileUi(
+    val displayName: String = "",
+    val handle: String = "",
+    val premium: Boolean = false,
+    val color: String = "5865F2",
+    val bio: String = "",
+    val busy: Boolean = false,
+    val error: String? = null,
+    val notice: String? = null,
+    val handleCheck: String? = null
+)
 
 data class ChatState(
     val stage: Stage = Stage.Welcome,
@@ -30,6 +60,7 @@ data class ChatState(
     val presenceByChannel: Map<String, Int> = emptyMap(),
     val typingByChannel: Map<String, String?> = emptyMap(), // channel -> username
     val username: String = "",
+    val userId: String = "",
     val authMethod: AuthMethod = AuthMethod.Email,
     val pendingIdentifier: String = "",
     val pendingUsername: String = "",
@@ -38,81 +69,120 @@ data class ChatState(
     val authError: String? = null,
     val codeMode: Boolean = false,
     val e2ee: Boolean = true,
-    val returnStage: Stage = Stage.Chats
+    val returnStage: Stage = Stage.Chats,
+    val replyingTo: ChatMessage? = null,
+    val uploadBusy: Boolean = false,
+    val profile: ProfileUi = ProfileUi(),
+    val customKeyChannels: Set<String> = emptySet()
 ) {
     val messages: List<ChatMessage> get() = messagesByChannel[currentChannel] ?: emptyList()
     val presence: Int get() = presenceByChannel[currentChannel] ?: 0
 }
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class ChatViewModel(app: Application) : AndroidViewModel(app) {
     private val session = Session(app)
     private val db = AppDatabase.getDatabase(app)
     private val messageDao = db.messageDao()
+    private val connectivity = ConnectivityObserver(app)
     private val _state = MutableStateFlow(ChatState())
     val state: StateFlow<ChatState> = _state.asStateFlow()
     private var client: ChatClient? = null
     private var messageJob: Job? = null
+    private var reconnectJob: Job? = null
+    private var backoffMs = 1_000L
 
     val serverUrl: String get() = session.serverUrl
+
+    companion object {
+        private const val MAX_SEND_ATTEMPTS = 5
+        private const val BACKOFF_MAX_MS = 30_000L
+    }
 
     init {
         val token = session.token
         if (!token.isNullOrBlank()) {
-            _state.value = _state.value.copy(stage = Stage.Chats, username = session.username ?: "")
+            _state.update { it.copy(stage = Stage.Chats, username = session.username ?: "") }
             connect()
         }
         observeLocalMessages()
+        observeConnectivity()
+        refreshCustomKeyFlags()
     }
 
     private fun observeLocalMessages() {
         messageJob?.cancel()
         messageJob = viewModelScope.launch {
-            _state.collectLatest { s ->
-                messageDao.getMessages(s.currentChannel).collectLatest { localMsgs ->
-                    val chatMsgs = localMsgs.map { 
-                        ChatMessage(it.id, it.channel, it.username, it.text, it.ts) 
+            _state.map { it.currentChannel }.distinctUntilChanged()
+                .flatMapLatest { ch -> messageDao.getMessages(ch).map { ch to it } }
+                .collect { (ch, rows) ->
+                    val msgs = rows.map { it.toChatMessage() }
+                    _state.update { s -> s.copy(messagesByChannel = s.messagesByChannel + (ch to msgs)) }
+                }
+        }
+    }
+
+    private fun observeConnectivity() {
+        viewModelScope.launch {
+            connectivity.online.collect { online ->
+                if (online) {
+                    if (session.token != null && _state.value.connState != ConnState.Connected) {
+                        reconnectJob?.cancel()
+                        backoffMs = 1_000L
+                        connect(force = true)
                     }
-                    val map = _state.value.messagesByChannel.toMutableMap()
-                    map[s.currentChannel] = chatMsgs
-                    _state.value = _state.value.copy(messagesByChannel = map)
+                } else {
+                    _state.update { it.copy(connState = ConnState.Disconnected) }
                 }
             }
         }
     }
 
+    private fun refreshCustomKeyFlags() {
+        _state.update { s ->
+            s.copy(customKeyChannels = s.channels.filter { session.hasCustomRoomKey(it) }.toSet())
+        }
+    }
+
     // ---- navigation ----
-    fun goWelcome() { _state.value = _state.value.copy(stage = Stage.Welcome, authError = null) }
-    fun startAuth() { _state.value = _state.value.copy(stage = Stage.EnterIdentifier, authError = null) }
-    fun setMethod(m: AuthMethod) { _state.value = _state.value.copy(authMethod = m) }
+    fun goWelcome() { _state.update { it.copy(stage = Stage.Welcome, authError = null) } }
+    fun startAuth() { _state.update { it.copy(stage = Stage.EnterIdentifier, authError = null) } }
+    fun setMethod(m: AuthMethod) { _state.update { it.copy(authMethod = m) } }
     fun setServerUrl(url: String) { if (url.isNotBlank()) session.serverUrl = url.trim() }
 
     // ---- auth ----
     fun requestCode(method: AuthMethod, identifier: String, username: String) {
         val id = identifier.trim()
-        if (id.isBlank()) {
-            _state.value = _state.value.copy(authError = "Enter your " + (if (method == AuthMethod.Phone) "phone" else "email"))
+        if (session.serverUrl.isBlank()) {
+            _state.update { it.copy(authError = "Enter your server URL first") }
             return
         }
-        _state.value = _state.value.copy(authBusy = true, authError = null, authMethod = method)
+        if (id.isBlank()) {
+            _state.update { it.copy(authError = "Enter your " + (if (method == AuthMethod.Phone) "phone" else "email")) }
+            return
+        }
+        _state.update { it.copy(authBusy = true, authError = null, authMethod = method) }
         viewModelScope.launch {
             val res = withContext(Dispatchers.IO) {
                 AuthApi.requestCode(session.serverUrl, if (method == AuthMethod.Phone) "phone" else "email", id)
             }
             if (res.ok) {
-                _state.value = _state.value.copy(
-                    authBusy = false, stage = Stage.EnterCode,
-                    pendingIdentifier = id, pendingUsername = username.trim(),
-                    devCode = res.devCode, authError = null
-                )
+                _state.update {
+                    it.copy(
+                        authBusy = false, stage = Stage.EnterCode,
+                        pendingIdentifier = id, pendingUsername = username.trim(),
+                        devCode = res.devCode, authError = null
+                    )
+                }
             } else {
-                _state.value = _state.value.copy(authBusy = false, authError = res.error ?: "Could not send code")
+                _state.update { it.copy(authBusy = false, authError = res.error ?: "Could not send code") }
             }
         }
     }
 
     fun verifyCode(code: String) {
         val s = _state.value
-        _state.value = s.copy(authBusy = true, authError = null)
+        _state.update { it.copy(authBusy = true, authError = null) }
         viewModelScope.launch {
             val res = withContext(Dispatchers.IO) {
                 AuthApi.verifyCode(
@@ -124,10 +194,10 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
             if (res.ok && res.token != null) {
                 session.token = res.token
                 session.username = res.username ?: s.pendingUsername
-                _state.value = _state.value.copy(authBusy = false, stage = Stage.Chats, username = session.username ?: "", authError = null)
-                connect()
+                _state.update { it.copy(authBusy = false, stage = Stage.Chats, username = session.username ?: "", authError = null) }
+                connect(force = true)
             } else {
-                _state.value = _state.value.copy(authBusy = false, authError = res.error ?: "Invalid or expired code")
+                _state.update { it.copy(authBusy = false, authError = res.error ?: "Invalid or expired code") }
             }
         }
     }
@@ -138,44 +208,50 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     // ---- websocket ----
-    private fun connect() {
-        if (client != null) return
-        _state.value = _state.value.copy(connState = ConnState.Connecting)
-        
+    private fun connect(force: Boolean = false) {
+        if (client != null) {
+            if (!force) return
+            client?.close(); client = null
+        }
+        val token = session.token ?: return
+        if (session.serverUrl.isBlank()) return
+        _state.update { it.copy(connState = ConnState.Connecting) }
+
         var url = session.serverUrl
         if (url.startsWith("http")) {
             url = url.replace("http://", "ws://").replace("https://", "wss://")
         }
         if (!url.contains("://")) {
-            url = "wss://" + url
+            url = "wss://$url"
         }
 
         val c = ChatClient(
             onOpen = {
-                _state.value = _state.value.copy(connState = ConnState.Connected)
-                val join = JSONObject().put("type", "join").put("token", session.token ?: "")
-                client?.send(join.toString())
-                processPendingQueue()
+                client?.send(JSONObject().put("type", "join").put("token", token).toString())
             },
             onText = { handle(it) },
-            onClosed = { 
-                _state.value = _state.value.copy(connState = ConnState.Disconnected)
-                reconnect()
+            onClosed = {
+                _state.update { it.copy(connState = ConnState.Disconnected) }
+                scheduleReconnect()
             },
-            onFailure = { 
-                _state.value = _state.value.copy(connState = ConnState.Error)
-                reconnect()
+            onFailure = {
+                _state.update { it.copy(connState = ConnState.Error) }
+                scheduleReconnect()
             }
         )
         client = c
         c.connect(url)
     }
 
-    private fun reconnect() {
+    private fun scheduleReconnect() {
         client = null
-        viewModelScope.launch {
-            kotlinx.coroutines.delay(5000)
-            if (session.token != null) connect()
+        if (session.token == null) return
+        reconnectJob?.cancel()
+        val delayMs = backoffMs + Random.nextLong(0, backoffMs / 2 + 1)
+        backoffMs = (backoffMs * 2).coerceAtMost(BACKOFF_MAX_MS)
+        reconnectJob = viewModelScope.launch {
+            delay(delayMs)
+            if (session.token != null && connectivity.isOnlineNow()) connect()
         }
     }
 
@@ -183,90 +259,122 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch(Dispatchers.IO) {
             val pending = messageDao.getPendingMessages()
             for (m in pending) {
-                val body = if (_state.value.e2ee) E2ee.encrypt(m.text, session.roomKey(m.channel)) else m.text
-                client?.send(JSONObject().put("type", "send").put("channel", m.channel).put("text", body).toString())
-                // We'll delete it once the server confirms it via "message" event
+                if (m.attempts >= MAX_SEND_ATTEMPTS) { messageDao.markFailed(m.id); continue }
+                messageDao.bumpAttempts(m.id)
+                sendFrame(m)
             }
         }
+    }
+
+    /** Re-sends a queued row with its ORIGINAL clientId -- the server dedupes. */
+    private fun sendFrame(m: LocalMessage) {
+        val body = if (_state.value.e2ee && m.text.isNotEmpty()) E2ee.encrypt(m.text, session.roomKey(m.channel)) else m.text
+        val o = JSONObject().put("type", "send").put("channel", m.channel).put("text", body)
+        m.clientId?.let { o.put("clientId", it) }
+        m.replyTo?.let { o.put("replyTo", it) }
+        m.mediaJson?.let { o.put("media", JSONObject(it)) }
+        client?.send(o.toString())
+    }
+
+    private fun syncSince() {
+        viewModelScope.launch(Dispatchers.IO) {
+            for (ch in _state.value.channels) {
+                val since = messageDao.latestServerTs(ch)
+                val o = JSONObject().put("type", "history").put("channel", ch)
+                if (since != null) o.put("since", since)
+                client?.send(o.toString())
+            }
+        }
+    }
+
+    private fun parseMessage(mo: JSONObject, channelHint: String? = null): LocalMessage {
+        val ch = channelHint ?: mo.optString("channel")
+        val rawText = mo.optString("text", "")
+        val text = E2ee.decrypt(rawText, session.roomKey(ch))
+        return LocalMessage(
+            id = mo.optString("id"),
+            clientId = null,
+            channel = ch,
+            userId = mo.optString("userId"),
+            username = mo.optString("username"),
+            handle = mo.optString("handle"),
+            premium = mo.optBoolean("premium"),
+            color = mo.optString("color", "5865F2"),
+            text = text,
+            ts = mo.optLong("ts"),
+            mediaJson = mo.optJSONObject("media")?.toString(),
+            replyTo = if (mo.isNull("replyTo")) null else mo.optString("replyTo", null),
+            reactionsJson = mo.optJSONObject("reactions")?.toString()
+        )
     }
 
     private fun handle(raw: String) {
         val o = try { JSONObject(raw) } catch (e: Exception) { return }
         when (o.optString("type")) {
             "welcome" -> {
+                backoffMs = 1_000L
                 val chans = jsonStrings(o.optJSONArray("channels"))
-                _state.value = _state.value.copy(
-                    username = o.optString("username", _state.value.username),
-                    channels = if (chans.isEmpty()) _state.value.channels else chans
-                )
+                val user = o.optJSONObject("user")
+                _state.update {
+                    it.copy(
+                        connState = ConnState.Connected,
+                        username = o.optString("username", it.username),
+                        userId = user?.optString("id") ?: o.optString("userId", it.userId),
+                        channels = if (chans.isEmpty()) it.channels else chans
+                    )
+                }
+                refreshCustomKeyFlags()
+                processPendingQueue()
+                syncSince()
             }
             "history" -> {
                 val ch = o.optString("channel")
                 val arr = o.optJSONArray("messages")
                 val list = mutableListOf<LocalMessage>()
                 if (arr != null) for (i in 0 until arr.length()) {
-                    val mo = arr.getJSONObject(i)
-                    val rawText = mo.optString("text", "")
-                    val text = E2ee.decrypt(rawText, session.roomKey(ch))
-                    list.add(LocalMessage(
-                        id = mo.optString("id"),
-                        channel = ch,
-                        username = mo.optString("username"),
-                        text = text,
-                        ts = mo.optLong("ts")
-                    ))
+                    list.add(parseMessage(arr.getJSONObject(i), ch))
                 }
-                viewModelScope.launch(Dispatchers.IO) { messageDao.insertAll(list) }
+                if (list.isNotEmpty()) viewModelScope.launch(Dispatchers.IO) { messageDao.insertAll(list) }
             }
             "message" -> {
                 val mo = o.optJSONObject("message") ?: return
-                val ch = mo.optString("channel")
-                val rawText = mo.optString("text", "")
-                val text = E2ee.decrypt(rawText, session.roomKey(ch))
-                val msg = LocalMessage(
-                    id = mo.optString("id"),
-                    channel = ch,
-                    username = mo.optString("username"),
-                    text = text,
-                    ts = mo.optLong("ts")
-                )
-                viewModelScope.launch(Dispatchers.IO) { 
-                    messageDao.insert(msg)
-                    // If we had a pending message with same content, it might be better to match by some client-side UID, 
-                    // but for now we just rely on server's message coming back.
+                val msg = parseMessage(mo)
+                val cid = mo.optString("clientId", "")
+                viewModelScope.launch(Dispatchers.IO) {
+                    if (cid.isNotEmpty()) messageDao.reconcile(cid, msg) else messageDao.insert(msg)
                 }
+            }
+            "reaction" -> {
+                val messageId = o.optString("messageId")
+                val reactions = o.optJSONObject("reactions")?.toString()
+                viewModelScope.launch(Dispatchers.IO) { messageDao.updateReactions(messageId, reactions) }
             }
             "presence" -> {
                 val ch = o.optString("channel")
                 val count = o.optJSONArray("users")?.length() ?: 0
-                val map = _state.value.presenceByChannel.toMutableMap(); map[ch] = count
-                _state.value = _state.value.copy(presenceByChannel = map)
+                _state.update { it.copy(presenceByChannel = it.presenceByChannel + (ch to count)) }
             }
             "typing" -> {
                 val ch = o.optString("channel")
                 val user = o.optJSONObject("user")?.optString("displayName")
                 if (user != _state.value.username) {
-                    val map = _state.value.typingByChannel.toMutableMap()
-                    map[ch] = user
-                    _state.value = _state.value.copy(typingByChannel = map)
+                    _state.update { it.copy(typingByChannel = it.typingByChannel + (ch to user)) }
                     viewModelScope.launch {
-                        kotlinx.coroutines.delay(3000)
+                        delay(3000)
                         if (_state.value.typingByChannel[ch] == user) {
-                            val newMap = _state.value.typingByChannel.toMutableMap()
-                            newMap[ch] = null
-                            _state.value = _state.value.copy(typingByChannel = newMap)
+                            _state.update { it.copy(typingByChannel = it.typingByChannel + (ch to null)) }
                         }
                     }
                 }
             }
             "channels" -> {
                 val chans = jsonStrings(o.optJSONArray("channels"))
-                if (chans.isNotEmpty()) _state.value = _state.value.copy(channels = chans)
+                if (chans.isNotEmpty()) _state.update { it.copy(channels = chans) }
             }
         }
     }
 
-    private fun jsonStrings(arr: org.json.JSONArray?): List<String> {
+    private fun jsonStrings(arr: JSONArray?): List<String> {
         val out = mutableListOf<String>()
         if (arr != null) for (i in 0 until arr.length()) out.add(arr.getString(i))
         return out
@@ -274,47 +382,256 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
 
     // ---- chat actions ----
     fun openChannel(ch: String) {
-        _state.value = _state.value.copy(currentChannel = ch, stage = Stage.Chat)
+        _state.update { it.copy(currentChannel = ch, stage = Stage.Chat, replyingTo = null) }
         client?.send(JSONObject().put("type", "switchChannel").put("channel", ch).toString())
     }
-    fun backToChats() { _state.value = _state.value.copy(stage = Stage.Chats) }
-    fun openScripts() { _state.value = _state.value.copy(returnStage = _state.value.stage, stage = Stage.Scripts) }
-    fun closeScripts() { _state.value = _state.value.copy(stage = _state.value.returnStage) }
-    fun toggleCode() { _state.value = _state.value.copy(codeMode = !_state.value.codeMode) }
+    fun backToChats() { _state.update { it.copy(stage = Stage.Chats, replyingTo = null) } }
+    fun openScripts() { _state.update { it.copy(returnStage = it.stage, stage = Stage.Scripts) } }
+    fun closeScripts() { _state.update { it.copy(stage = it.returnStage) } }
+    fun toggleCode() { _state.update { it.copy(codeMode = !it.codeMode) } }
 
     fun sendTyping() {
         val ch = _state.value.currentChannel
         client?.send(JSONObject().put("type", "typing").put("channel", ch).toString())
     }
 
+    fun startReply(m: ChatMessage) { _state.update { it.copy(replyingTo = m) } }
+    fun cancelReply() { _state.update { it.copy(replyingTo = null) } }
+
     fun send(text: String) {
         if (text.isBlank()) return
-        val ch = _state.value.currentChannel
-        val username = _state.value.username
-        val ts = System.currentTimeMillis()
-        val tempId = "temp_" + UUID.randomUUID().toString()
-        
-        val local = LocalMessage(tempId, ch, username, text, ts, isPending = true)
-        viewModelScope.launch(Dispatchers.IO) { messageDao.insert(local) }
+        enqueueAndSend(text = text, media = null)
+        if (_state.value.codeMode) _state.update { it.copy(codeMode = false) }
+    }
 
-        if (_state.value.connState == ConnState.Connected) {
-            val body = if (_state.value.e2ee) E2ee.encrypt(text, session.roomKey(ch)) else text
-            client?.send(JSONObject().put("type", "send").put("channel", ch).put("text", body).toString())
+    private fun enqueueAndSend(text: String, media: MediaRef?) {
+        val s = _state.value
+        val ch = s.currentChannel
+        val clientId = UUID.randomUUID().toString()
+        val replyTo = s.replyingTo?.id
+        val local = LocalMessage(
+            id = "local_$clientId", clientId = clientId, channel = ch,
+            userId = s.userId, username = s.username, text = text,
+            ts = System.currentTimeMillis(),
+            mediaJson = media?.let { mediaRefToJson(it).toString() },
+            replyTo = replyTo, isPending = true
+        )
+        _state.update { it.copy(replyingTo = null) }
+        viewModelScope.launch(Dispatchers.IO) {
+            messageDao.insert(local)
+            if (_state.value.connState == ConnState.Connected) {
+                messageDao.bumpAttempts(local.id)
+                sendFrame(local)
+            } else {
+                scheduleBackgroundFlush()
+            }
         }
-        
-        if (_state.value.codeMode) _state.value = _state.value.copy(codeMode = false)
+    }
+
+    fun retryMessage(id: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            messageDao.markRetrying(id, System.currentTimeMillis())
+            if (_state.value.connState == ConnState.Connected) processPendingQueue()
+            else scheduleBackgroundFlush()
+        }
+    }
+
+    /** Flush the send queue from the background when connectivity returns. */
+    fun scheduleBackgroundFlush() {
+        val work = OneTimeWorkRequestBuilder<SendQueueWorker>()
+            .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
+            .build()
+        WorkManager.getInstance(getApplication())
+            .enqueueUniqueWork(SendQueueWorker.WORK_NAME, ExistingWorkPolicy.KEEP, work)
+    }
+
+    // ---- media ----
+    fun sendMedia(uri: Uri) {
+        val app = getApplication<Application>()
+        val token = session.token ?: return
+        _state.update { it.copy(uploadBusy = true) }
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val resolver = app.contentResolver
+                val mime = resolver.getType(uri) ?: "application/octet-stream"
+                var name = "file"
+                resolver.query(uri, null, null, null, null)?.use { cur ->
+                    val idx = cur.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                    if (idx >= 0 && cur.moveToFirst()) name = cur.getString(idx) ?: name
+                }
+                val bytes = resolver.openInputStream(uri)?.use { it.readBytes() }
+                if (bytes == null || bytes.isEmpty()) {
+                    _state.update { it.copy(uploadBusy = false) }
+                    return@launch
+                }
+                val kind = when {
+                    mime.startsWith("image/") -> "image"
+                    mime.startsWith("video/") -> "video"
+                    else -> "file"
+                }
+                val r = MediaApi.upload(session.serverUrl, token, bytes, mime, name, kind)
+                _state.update { it.copy(uploadBusy = false) }
+                if (r.media != null) {
+                    enqueueAndSend(text = "", media = r.media)
+                }
+            } catch (e: Exception) {
+                _state.update { it.copy(uploadBusy = false) }
+            }
+        }
+    }
+
+    fun mediaUrl(id: String): String = MediaApi.mediaUrl(session.serverUrl, id)
+
+    // ---- reactions ----
+    fun react(messageId: String, emoji: String) {
+        val ch = _state.value.currentChannel
+        client?.send(
+            JSONObject().put("type", "react").put("channel", ch)
+                .put("messageId", messageId).put("emoji", emoji).toString()
+        )
+    }
+
+    // ---- profile ----
+    fun openProfile() {
+        _state.update { it.copy(stage = Stage.Profile, profile = it.profile.copy(busy = true, error = null, notice = null)) }
+        val token = session.token ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            val r = AuthApi.getProfile(session.serverUrl, token)
+            _state.update {
+                it.copy(profile = if (r.ok) ProfileUi(
+                    displayName = r.displayName ?: it.username,
+                    handle = r.handle ?: "", premium = r.premium,
+                    color = r.color ?: "5865F2", bio = r.bio ?: ""
+                ) else it.profile.copy(busy = false, error = r.error))
+            }
+        }
+    }
+    fun closeProfile() { _state.update { it.copy(stage = Stage.Chats) } }
+
+    private fun applyProfile(r: AuthApi.ProfileResult, notice: String?) {
+        _state.update {
+            if (r.ok) {
+                session.username = r.displayName ?: it.username
+                it.copy(
+                    username = r.displayName ?: it.username,
+                    profile = it.profile.copy(
+                        displayName = r.displayName ?: it.profile.displayName,
+                        handle = r.handle ?: it.profile.handle,
+                        premium = r.premium, color = r.color ?: it.profile.color,
+                        bio = r.bio ?: it.profile.bio,
+                        busy = false, error = null, notice = notice
+                    )
+                )
+            } else it.copy(profile = it.profile.copy(busy = false, error = r.error, notice = null))
+        }
+    }
+
+    fun saveProfile(displayName: String, bio: String, color: String) {
+        val token = session.token ?: return
+        _state.update { it.copy(profile = it.profile.copy(busy = true, error = null, notice = null)) }
+        viewModelScope.launch(Dispatchers.IO) {
+            applyProfile(AuthApi.updateProfile(session.serverUrl, token, displayName, bio, color), "Profile saved")
+        }
+    }
+
+    fun checkHandle(handle: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val st = AuthApi.checkHandle(session.serverUrl, handle)
+            val msg = when {
+                !st.valid -> st.reason ?: "invalid username"
+                !st.available -> "@$handle is taken"
+                st.premiumOnly -> "@$handle is available (Premium only)"
+                else -> "@$handle is available"
+            }
+            _state.update { it.copy(profile = it.profile.copy(handleCheck = msg)) }
+        }
+    }
+
+    fun claimHandle(handle: String) {
+        val token = session.token ?: return
+        _state.update { it.copy(profile = it.profile.copy(busy = true, error = null, notice = null)) }
+        viewModelScope.launch(Dispatchers.IO) {
+            applyProfile(AuthApi.claimHandle(session.serverUrl, token, handle), "Username claimed")
+        }
+    }
+
+    fun claimPremium(code: String) {
+        val token = session.token ?: return
+        _state.update { it.copy(profile = it.profile.copy(busy = true, error = null, notice = null)) }
+        viewModelScope.launch(Dispatchers.IO) {
+            applyProfile(AuthApi.claimPremium(session.serverUrl, token, code), "Premium activated 🎉")
+        }
     }
 
     fun lastPreview(ch: String): String {
         val m = _state.value.messagesByChannel[ch]?.lastOrNull() ?: return "Tap to start chatting"
-        return (m.username + ": " + m.text).replace("\n", " ").take(48)
+        val text = if (m.text.isBlank() && m.media != null) "[" + m.media.kind + "] " + m.media.name else m.text
+        return (m.username + ": " + text).replace("\n", " ").take(48)
     }
 
-    fun setRoomKey(key: String) { if (key.isNotBlank()) session.setRoomKey(_state.value.currentChannel, key.trim()) }
+    // ---- e2ee room key ----
+    fun hasCustomRoomKey(ch: String): Boolean = session.hasCustomRoomKey(ch)
+
+    fun setRoomKey(key: String) {
+        val ch = _state.value.currentChannel
+        if (key.isBlank()) return
+        session.setRoomKey(ch, key.trim())
+        refreshCustomKeyFlags()
+        // Locally cached plaintext was decrypted with the old key; wipe and
+        // re-pull so history is re-decrypted with the new one.
+        viewModelScope.launch(Dispatchers.IO) {
+            messageDao.clearChannel(ch)
+            client?.send(JSONObject().put("type", "history").put("channel", ch).toString())
+        }
+    }
 
     fun logout() {
         client?.close(); client = null
+        reconnectJob?.cancel()
         session.clear()
-        _state.value = ChatState()
+        viewModelScope.launch(Dispatchers.IO) {
+            for (ch in _state.value.channels) messageDao.clearChannel(ch)
+            _state.value = ChatState()
+        }
     }
 }
+
+// ---- mapping helpers ----
+fun LocalMessage.toChatMessage(): ChatMessage = ChatMessage(
+    id = id, channel = channel, userId = userId, username = username,
+    handle = handle, premium = premium, color = color,
+    text = text, ts = ts,
+    media = mediaJson?.let { jsonToMediaRef(it) },
+    replyTo = replyTo,
+    reactions = reactionsJson?.let { jsonToReactions(it) } ?: emptyMap(),
+    isPending = isPending, isFailed = isFailed
+)
+
+fun mediaRefToJson(m: MediaRef): JSONObject = JSONObject()
+    .put("id", m.id).put("kind", m.kind).put("mime", m.mime)
+    .put("name", m.name).put("size", m.size)
+    .apply {
+        m.width?.let { put("width", it) }
+        m.height?.let { put("height", it) }
+    }
+
+fun jsonToMediaRef(s: String): MediaRef? = try {
+    val o = JSONObject(s)
+    MediaRef(
+        id = o.getString("id"), kind = o.optString("kind", "file"),
+        mime = o.optString("mime", "application/octet-stream"),
+        name = o.optString("name", "file"), size = o.optLong("size"),
+        width = if (o.has("width")) o.optInt("width") else null,
+        height = if (o.has("height")) o.optInt("height") else null
+    )
+} catch (e: Exception) { null }
+
+fun jsonToReactions(s: String): Map<String, List<String>> = try {
+    val o = JSONObject(s)
+    val out = mutableMapOf<String, List<String>>()
+    for (k in o.keys()) {
+        val arr = o.optJSONArray(k) ?: continue
+        out[k] = (0 until arr.length()).map { arr.getString(it) }
+    }
+    out
+} catch (e: Exception) { emptyMap() }

@@ -74,6 +74,8 @@ dependencies {
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("org.mozilla:rhino:1.7.14")
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
+    implementation("io.coil-kt:coil-compose:2.6.0")
+    implementation("androidx.work:work-runtime-ktx:2.9.1")
 
     // Room
     val roomVersion = "2.6.1"

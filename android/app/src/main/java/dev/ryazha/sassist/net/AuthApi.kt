@@ -17,6 +17,12 @@ object AuthApi {
 
     data class RequestResult(val ok: Boolean, val devCode: String?, val delivered: Boolean, val error: String?)
     data class VerifyResult(val ok: Boolean, val token: String?, val username: String?, val error: String?)
+    data class ProfileResult(
+        val ok: Boolean, val error: String?,
+        val displayName: String? = null, val handle: String? = null,
+        val premium: Boolean = false, val color: String? = null, val bio: String? = null
+    )
+    data class HandleStatus(val valid: Boolean, val available: Boolean, val premiumOnly: Boolean, val reason: String?)
 
     fun httpBase(ws: String): String =
         ws.trim().replace("wss://", "https://").replace("ws://", "http://").trimEnd('/')
@@ -63,4 +69,78 @@ object AuthApi {
             VerifyResult(false, null, null, e.message ?: "network error")
         }
     }
+
+    // ---- profile / handle / premium ----
+    private fun parseProfile(j: JSONObject): ProfileResult {
+        val u = j.optJSONObject("user")
+        return ProfileResult(
+            ok = j.optBoolean("ok"),
+            error = if (j.isNull("error")) null else j.optString("error", null),
+            displayName = u?.optString("displayName"),
+            handle = u?.optString("handle"),
+            premium = u?.optBoolean("premium") ?: false,
+            color = u?.optString("color"),
+            bio = u?.optString("bio")
+        )
+    }
+
+    private fun postAuthed(serverUrl: String, path: String, token: String, body: JSONObject): ProfileResult {
+        return try {
+            val req = Request.Builder()
+                .url(httpBase(serverUrl) + path)
+                .header("Authorization", "Bearer $token")
+                .post(body.toString().toRequestBody(JSON)).build()
+            client.newCall(req).execute().use { resp ->
+                parseProfile(JSONObject(resp.body?.string() ?: "{}"))
+            }
+        } catch (e: Exception) {
+            ProfileResult(false, e.message ?: "network error")
+        }
+    }
+
+    fun getProfile(serverUrl: String, token: String): ProfileResult {
+        return try {
+            val req = Request.Builder()
+                .url(httpBase(serverUrl) + "/profile")
+                .header("Authorization", "Bearer $token")
+                .get().build()
+            client.newCall(req).execute().use { resp ->
+                parseProfile(JSONObject(resp.body?.string() ?: "{}"))
+            }
+        } catch (e: Exception) {
+            ProfileResult(false, e.message ?: "network error")
+        }
+    }
+
+    fun updateProfile(serverUrl: String, token: String, displayName: String?, bio: String?, color: String?): ProfileResult {
+        val b = JSONObject()
+        displayName?.let { b.put("displayName", it) }
+        bio?.let { b.put("bio", it) }
+        color?.let { b.put("color", it) }
+        return postAuthed(serverUrl, "/profile", token, b)
+    }
+
+    fun checkHandle(serverUrl: String, handle: String): HandleStatus {
+        return try {
+            val req = Request.Builder()
+                .url(httpBase(serverUrl) + "/handle/check?handle=" + java.net.URLEncoder.encode(handle, "UTF-8"))
+                .get().build()
+            client.newCall(req).execute().use { resp ->
+                val j = JSONObject(resp.body?.string() ?: "{}")
+                HandleStatus(
+                    valid = j.optBoolean("valid"), available = j.optBoolean("available"),
+                    premiumOnly = j.optBoolean("premiumOnly"),
+                    reason = if (j.isNull("reason")) null else j.optString("reason", null)
+                )
+            }
+        } catch (e: Exception) {
+            HandleStatus(false, false, false, e.message ?: "network error")
+        }
+    }
+
+    fun claimHandle(serverUrl: String, token: String, handle: String): ProfileResult =
+        postAuthed(serverUrl, "/handle/claim", token, JSONObject().put("handle", handle))
+
+    fun claimPremium(serverUrl: String, token: String, code: String): ProfileResult =
+        postAuthed(serverUrl, "/premium/claim", token, JSONObject().put("code", code))
 }

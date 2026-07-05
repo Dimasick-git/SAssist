@@ -34,7 +34,8 @@ fun AuthIdentifierScreen(
     var identifier by remember { mutableStateOf("") }
     var name by remember { mutableStateOf("") }
     var server by remember { mutableStateOf(serverUrl) }
-    var advanced by remember { mutableStateOf(false) }
+    // The server field is required; expand it by default until one is set.
+    var advanced by remember { mutableStateOf(serverUrl.isBlank()) }
 
     val tf = TextFieldDefaults.colors(
         focusedContainerColor = BgInput, unfocusedContainerColor = BgInput,
@@ -91,6 +92,8 @@ fun AuthIdentifierScreen(
             OutlinedTextField(
                 value = server, onValueChange = { server = it; onServer(it) },
                 label = { Text("Server URL") }, singleLine = true, colors = tf,
+                placeholder = { Text("wss://your-server.example", color = TextMuted) },
+                supportingText = { Text("Self-hosted? Use ws://<host>:8080 (emulator: ws://10.0.2.2:8080)", color = TextMuted, fontSize = 11.sp) },
                 modifier = Modifier.fillMaxWidth()
             )
         }
@@ -103,7 +106,7 @@ fun AuthIdentifierScreen(
         Spacer(Modifier.weight(1f))
         Button(
             onClick = { onServer(server); onSubmit(method, identifier, name) },
-            enabled = !busy && identifier.isNotBlank(),
+            enabled = !busy && identifier.isNotBlank() && server.isNotBlank(),
             modifier = Modifier.fillMaxWidth().height(52.dp),
             shape = RoundedCornerShape(16.dp),
             colors = ButtonDefaults.buttonColors(containerColor = Blurple, disabledContainerColor = BgPanel)

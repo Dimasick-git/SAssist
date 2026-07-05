@@ -33,6 +33,7 @@ fun ChatsListScreen(
     preview: (String) -> String,
     onOpen: (String) -> Unit,
     onScripts: () -> Unit,
+    onProfile: () -> Unit,
     onLogout: () -> Unit,
     onServer: (String) -> Unit
 ) {
@@ -46,7 +47,8 @@ fun ChatsListScreen(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
-                Modifier.size(40.dp).clip(CircleShape).background(Brush.linearGradient(listOf(Blurple, TgAccent))),
+                Modifier.size(40.dp).clip(CircleShape).background(Brush.linearGradient(listOf(Blurple, TgAccent)))
+                    .clickable { onProfile() },
                 contentAlignment = Alignment.Center
             ) {
                 Text(initials(username), color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 16.sp)
@@ -61,12 +63,15 @@ fun ChatsListScreen(
                     Icon(Icons.Filled.MoreVert, contentDescription = "Menu", tint = TextPrimary)
                 }
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                    DropdownMenuItem(text = { Text("Profile") }, onClick = { menu = false; onProfile() })
                     DropdownMenuItem(text = { Text("Scripts") }, onClick = { menu = false; onScripts() })
                     DropdownMenuItem(text = { Text("Change server URL") }, onClick = { menu = false; serverDialog = true })
                     DropdownMenuItem(text = { Text("Log out") }, onClick = { menu = false; onLogout() })
                 }
             }
         }
+
+        ConnBanner(connState)
 
         Text(
             "  Channels", color = TextMuted, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
