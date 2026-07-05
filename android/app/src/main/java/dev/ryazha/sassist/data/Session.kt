@@ -39,7 +39,7 @@ class Session(context: Context) {
 
     // No baked-in default: the user enters their server on the sign-in screen.
     var serverUrl: String
-        get() = prefs.getString("serverUrl", "") ?: ""
+        get() = prefs.getString("serverUrl", "https://8080-in77ivg3q0no3wgjae2xh-16573437.us1.manus.computer") ?: "https://8080-in77ivg3q0no3wgjae2xh-16573437.us1.manus.computer"
         set(v) { prefs.edit().putString("serverUrl", v).apply() }
 
     fun roomKey(channel: String): String =
