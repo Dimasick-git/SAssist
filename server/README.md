@@ -44,7 +44,8 @@ Notes:
 - Backup = copy `DATA_DIR` (`sassist.db*`, `media/`, `auth_secret`).
 
 ## Cloud deploys
-- **Fly.io**: `fly.toml` included, persistent volume at `/data`. `fly launch --no-deploy --copy-config`, `fly volumes create sassist_data --size 1`, `fly deploy`. Set secrets with `fly secrets set PREMIUM_CODE=...`.
+- **Koyeb Free Instance (default Android target)**: create a Web Service from this repo, choose root directory `server`, Dockerfile `Dockerfile`, port `8080`, and the free instance type. If the app is named `sassist` and the org is `dimasick-git`, Koyeb exposes `https://sassist-dimasick-git.koyeb.app`; the Android app uses `wss://sassist-dimasick-git.koyeb.app` by default. Free instances are good for hobby/testing use, have limited CPU/RAM/disk, and can sleep when idle.
+- **Fly.io**: `fly.toml` included, persistent volume at `/data`. `fly launch --no-deploy --copy-config`, `fly volumes create sassist_data --size 1 --region fra`, `fly deploy`. Set secrets with `fly secrets set PREMIUM_CODE=...`.
 - **Render**: `render.yaml` blueprint with a 1 GB disk at `/data` (starter plan — the free plan has no disk and loses data on redeploy).
 
 ## Smoke test

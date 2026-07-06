@@ -17,12 +17,14 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.ErrorOutline
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.InsertDriveFile
-import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
@@ -37,6 +39,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -137,137 +140,153 @@ fun MessageView(
     onRetry: (String) -> Unit = {}
 ) {
     val clipboard = LocalClipboardManager.current
+    val uriHandler = LocalUriHandler.current
     val time = remember(msg.ts) { SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(msg.ts)) }
     var menuOpen by remember { mutableStateOf(false) }
+    val mine = myUserId.isNotBlank() && msg.userId == myUserId
+    val bubbleColor = if (mine) Blurple else BgPanel
+    val bubbleShape = RoundedCornerShape(
+        topStart = 18.dp,
+        topEnd = 18.dp,
+        bottomStart = if (mine) 18.dp else 4.dp,
+        bottomEnd = if (mine) 4.dp else 18.dp
+    )
 
-    Column(
+    Row(
         Modifier.fillMaxWidth()
-            .combinedClickable(onClick = {}, onLongClick = { menuOpen = true })
-            .padding(horizontal = 12.dp, vertical = 6.dp)
-            .alpha(if (msg.isPending) 0.6f else 1f)
+            .padding(horizontal = 10.dp, vertical = 4.dp)
+            .alpha(if (msg.isPending) 0.65f else 1f),
+        horizontalArrangement = if (mine) Arrangement.End else Arrangement.Start,
+        verticalAlignment = Alignment.Bottom
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(msg.username, color = userColor(msg), fontWeight = FontWeight.Bold, fontSize = 14.sp)
-            if (msg.premium) Text(" ★", color = Color(0xFFFEE75C), fontSize = 12.sp)
-            if (msg.handle.isNotBlank()) Text(" @" + msg.handle, color = TextMuted, fontSize = 11.sp)
-            Text("  $time", color = TextMuted, fontSize = 11.sp)
-            if (msg.isPending) {
-                Spacer(Modifier.width(4.dp))
-                Icon(Icons.Filled.Schedule, contentDescription = "Sending", tint = TextMuted, modifier = Modifier.size(12.dp))
-            }
-        }
-
-        // Quoted reply
-        msg.replyTo?.let { rid ->
-            val original = findMessage(rid)
-            Row(
-                Modifier.padding(top = 2.dp).clip(RoundedCornerShape(6.dp)).background(BgPanel)
-                    .padding(horizontal = 8.dp, vertical = 4.dp)
-            ) {
-                Box(Modifier.width(3.dp).height(28.dp).clip(RoundedCornerShape(2.dp)).background(TgAccent))
-                Spacer(Modifier.width(6.dp))
-                Column {
-                    Text(original?.username ?: "…", color = TgAccent, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-                    Text(
-                        (original?.let { if (it.text.isBlank() && it.media != null) "[" + it.media.kind + "]" else it.text } ?: "message unavailable")
-                            .replace("\n", " ").take(64),
-                        color = TextMuted, fontSize = 11.sp, maxLines = 1
-                    )
+        if (!mine) Avatar(msg)
+        if (!mine) Spacer(Modifier.width(7.dp))
+        Column(
+            Modifier.widthIn(max = 310.dp)
+                .clip(bubbleShape)
+                .background(bubbleColor)
+                .combinedClickable(onClick = {}, onLongClick = { menuOpen = true })
+                .padding(horizontal = 10.dp, vertical = 7.dp)
+        ) {
+            if (!mine) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(msg.username, color = userColor(msg), fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    if (msg.premium) Text(" ★", color = Color(0xFFFEE75C), fontSize = 12.sp)
+                    if (msg.handle.isNotBlank()) Text(" @" + msg.handle, color = TextMuted, fontSize = 11.sp)
                 }
             }
-        }
 
-        // Media
-        msg.media?.let { media ->
-            if (media.kind == "image") {
-                AsyncImage(
-                    model = mediaUrl(media.id),
-                    contentDescription = media.name,
-                    modifier = Modifier.padding(top = 4.dp)
-                        .widthIn(max = 260.dp).heightIn(max = 320.dp)
-                        .clip(RoundedCornerShape(10.dp))
-                )
-            } else {
+            msg.replyTo?.let { rid ->
+                val original = findMessage(rid)
                 Row(
-                    Modifier.padding(top = 4.dp).clip(RoundedCornerShape(8.dp)).background(BgPanel)
-                        .padding(horizontal = 10.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                    Modifier.padding(top = 3.dp, bottom = 4.dp).clip(RoundedCornerShape(8.dp))
+                        .background(if (mine) Color.White.copy(alpha = 0.15f) else BgInput)
+                        .padding(horizontal = 8.dp, vertical = 5.dp)
                 ) {
-                    Icon(Icons.Filled.InsertDriveFile, contentDescription = null, tint = TgAccent, modifier = Modifier.size(18.dp))
+                    Box(Modifier.width(3.dp).height(30.dp).clip(RoundedCornerShape(2.dp)).background(TgAccent))
                     Spacer(Modifier.width(6.dp))
                     Column {
-                        Text(media.name, color = TextPrimary, fontSize = 13.sp, maxLines = 1)
-                        Text(formatSize(media.size) + " · " + media.kind, color = TextMuted, fontSize = 11.sp)
+                        Text(original?.username ?: "…", color = TgAccent, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                        Text((original?.let { mediaPreviewText(it) } ?: "message unavailable").replace("\n", " ").take(64), color = if (mine) TextPrimary.copy(alpha = 0.8f) else TextMuted, fontSize = 11.sp, maxLines = 1)
                     }
                 }
             }
-        }
 
-        parseBlocks(msg.text).forEach { block ->
-            when (block) {
-                is Block.Plain -> {
-                    val t = block.text.trim('\n')
-                    if (t.isNotBlank())
-                        Text(inlineMarkdown(t), color = TextPrimary, fontSize = 15.sp, modifier = Modifier.padding(top = 2.dp))
-                }
-                is Block.Code -> CodeBlock(block.lang, block.code) {
-                    clipboard.setText(AnnotatedString(block.code))
-                }
-            }
-        }
-
-        // Failed status with tap-to-retry
-        if (msg.isFailed) {
-            Row(
-                Modifier.padding(top = 2.dp).clickable { onRetry(msg.id) },
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(Icons.Filled.ErrorOutline, contentDescription = null, tint = Color(0xFFED4245), modifier = Modifier.size(13.dp))
-                Spacer(Modifier.width(4.dp))
-                Text("Not sent — tap to retry", color = Color(0xFFED4245), fontSize = 11.sp)
-            }
-        }
-
-        // Reaction chips
-        if (msg.reactions.isNotEmpty()) {
-            Row(
-                Modifier.padding(top = 4.dp).horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                msg.reactions.forEach { (emoji, users) ->
-                    val mine = myUserId.isNotBlank() && users.contains(myUserId)
+            msg.media?.let { media ->
+                val url = mediaUrl(media.id)
+                if (media.kind == "image") {
+                    AsyncImage(
+                        model = url,
+                        contentDescription = media.name,
+                        modifier = Modifier.padding(top = 4.dp).widthIn(max = 280.dp).heightIn(max = 340.dp)
+                            .clip(RoundedCornerShape(12.dp)).clickable { uriHandler.openUri(url) }
+                    )
+                } else {
                     Row(
-                        Modifier.clip(RoundedCornerShape(10.dp))
-                            .background(if (mine) Blurple.copy(alpha = 0.35f) else BgPanel)
-                            .clickable { onReact(msg.id, emoji) }
-                            .padding(horizontal = 8.dp, vertical = 3.dp),
+                        Modifier.padding(top = 4.dp).clip(RoundedCornerShape(12.dp))
+                            .background(if (mine) Color.White.copy(alpha = 0.14f) else BgInput)
+                            .clickable { uriHandler.openUri(url) }
+                            .padding(horizontal = 10.dp, vertical = 9.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(emoji, fontSize = 12.sp)
-                        Spacer(Modifier.width(3.dp))
-                        Text(users.size.toString(), color = if (mine) TextPrimary else TextMuted, fontSize = 11.sp)
+                        Icon(if (media.kind == "audio" || media.kind == "video") Icons.Filled.PlayArrow else Icons.Filled.InsertDriveFile, contentDescription = null, tint = TgAccent, modifier = Modifier.size(22.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Column(Modifier.weight(1f, fill = false)) {
+                            Text(media.name, color = TextPrimary, fontSize = 13.sp, maxLines = 1)
+                            Text(formatSize(media.size) + " · " + mediaKindLabel(media.kind) + " · tap to open/download", color = if (mine) TextPrimary.copy(alpha = 0.75f) else TextMuted, fontSize = 11.sp)
+                        }
+                        Spacer(Modifier.width(8.dp))
+                        Icon(Icons.Filled.Download, contentDescription = "Download", tint = TextMuted, modifier = Modifier.size(18.dp))
                     }
                 }
             }
-        }
 
-        // Long-press action menu: react or reply
-        DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-            Row(Modifier.padding(horizontal = 10.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                REACTION_CHOICES.forEach { emoji ->
-                    Text(emoji, fontSize = 20.sp, modifier = Modifier.clickable {
-                        menuOpen = false
-                        onReact(msg.id, emoji)
-                    })
+            parseBlocks(msg.text).forEach { block ->
+                when (block) {
+                    is Block.Plain -> block.text.trim('\n').takeIf { it.isNotBlank() }?.let { Text(inlineMarkdown(it), color = TextPrimary, fontSize = 15.sp, modifier = Modifier.padding(top = 2.dp)) }
+                    is Block.Code -> CodeBlock(block.lang, block.code) { clipboard.setText(AnnotatedString(block.code)) }
                 }
-                Text("↩ Reply", color = TgAccent, fontSize = 15.sp, fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.clickable {
-                        menuOpen = false
-                        onReply(msg)
-                    })
+            }
+
+            Row(Modifier.align(Alignment.End).padding(top = 3.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (msg.isFailed) {
+                    Row(Modifier.clickable { onRetry(msg.id) }, verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Filled.ErrorOutline, contentDescription = null, tint = Color(0xFFED4245), modifier = Modifier.size(13.dp))
+                        Spacer(Modifier.width(3.dp))
+                        Text("retry", color = Color(0xFFED4245), fontSize = 11.sp)
+                    }
+                    Spacer(Modifier.width(6.dp))
+                }
+                Text(time, color = if (mine) TextPrimary.copy(alpha = 0.72f) else TextMuted, fontSize = 10.sp)
+                if (mine) {
+                    Spacer(Modifier.width(3.dp))
+                    Text(if (msg.isPending) "◷" else "✓✓", color = if (msg.isPending) TextMuted else Onlineish, fontSize = 11.sp)
+                }
+            }
+
+            if (msg.reactions.isNotEmpty()) {
+                Row(Modifier.padding(top = 4.dp).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    msg.reactions.forEach { (emoji, users) ->
+                        val reactedByMe = myUserId.isNotBlank() && users.contains(myUserId)
+                        Row(Modifier.clip(RoundedCornerShape(10.dp)).background(if (reactedByMe) TgAccent.copy(alpha = 0.35f) else BgInput).clickable { onReact(msg.id, emoji) }.padding(horizontal = 8.dp, vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text(emoji, fontSize = 12.sp)
+                            Spacer(Modifier.width(3.dp))
+                            Text(users.size.toString(), color = TextPrimary, fontSize = 11.sp)
+                        }
+                    }
+                }
+            }
+
+            DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                Row(Modifier.padding(horizontal = 10.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    REACTION_CHOICES.forEach { emoji -> Text(emoji, fontSize = 20.sp, modifier = Modifier.clickable { menuOpen = false; onReact(msg.id, emoji) }) }
+                    Text("↩ Reply", color = TgAccent, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.clickable { menuOpen = false; onReply(msg) })
+                }
             }
         }
     }
+}
+
+@Composable
+private fun Avatar(msg: ChatMessage) {
+    Box(
+        Modifier.size(34.dp).clip(CircleShape).background(userColor(msg)),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(msg.username.trim().take(1).ifBlank { "?" }.uppercase(Locale.getDefault()), color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+    }
+}
+
+private val Onlineish = Color(0xFF5AD1FF)
+
+private fun mediaPreviewText(msg: ChatMessage): String =
+    if (msg.text.isBlank() && msg.media != null) "[" + mediaKindLabel(msg.media.kind) + "] " + msg.media.name else msg.text
+
+private fun mediaKindLabel(kind: String): String = when (kind) {
+    "image" -> "photo"
+    "video" -> "video"
+    "audio" -> "voice"
+    else -> "file"
 }
 
 private fun formatSize(bytes: Long): String = when {

@@ -12,6 +12,15 @@ import androidx.security.crypto.MasterKey
  * so the app never crashes on exotic devices.
  */
 class Session(context: Context) {
+    companion object {
+        // Free cloud backend target: deploy this repo to Koyeb's Free Instance
+        // as app `sassist` under org `dimasick-git` to get this public URL.
+        const val DEFAULT_SERVER_URL = "wss://sassist-dimasick-git.koyeb.app"
+
+        // Local fallback for emulator development: run `docker compose up -d --build`.
+        const val LOCAL_SERVER_URL = "ws://10.0.2.2:8080"
+    }
+
     private val prefs: SharedPreferences = run {
         try {
             val masterKey = MasterKey.Builder(context)
@@ -37,9 +46,10 @@ class Session(context: Context) {
         get() = prefs.getString("username", null)
         set(v) { prefs.edit().putString("username", v).apply() }
 
-    // No baked-in default: the user enters their server on the sign-in screen.
+    // Defaults to the free Koyeb cloud backend URL. Users can still replace it
+    // with their own Koyeb/LAN/local URL in Server settings.
     var serverUrl: String
-        get() = prefs.getString("serverUrl", "https://8080-in77ivg3q0no3wgjae2xh-16573437.us1.manus.computer") ?: "https://8080-in77ivg3q0no3wgjae2xh-16573437.us1.manus.computer"
+        get() = prefs.getString("serverUrl", DEFAULT_SERVER_URL) ?: DEFAULT_SERVER_URL
         set(v) { prefs.edit().putString("serverUrl", v).apply() }
 
     fun roomKey(channel: String): String =
