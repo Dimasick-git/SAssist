@@ -363,7 +363,21 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                 rememberName(msg.userId, msg.username)
                 val cid = mo.optString("clientId", "")
                 viewModelScope.launch(Dispatchers.IO) {
-                    if (cid.isNotEmpty()) messageDao.reconcile(cid, msg) else messageDao.insert(msg)
+                    if (cid.isNotEmpty()) {
+                        messageDao.reconcile(cid, msg)
+                    } else {
+                        // Backend didn't echo our clientId (e.g. a stripped-down
+                        // server). If this is our own message coming back, drop the
+                        // matching optimistic row so it doesn't show as a duplicate.
+                        if (msg.userId.isNotBlank() && msg.userId == _state.value.userId) {
+                            val pend = messageDao.pendingInChannel(msg.channel)
+                            val match = pend.firstOrNull {
+                                it.text == msg.text && (it.mediaJson != null) == (msg.mediaJson != null)
+                            } ?: pend.firstOrNull { it.text == msg.text }
+                            if (match != null) messageDao.deleteById(match.id)
+                        }
+                        messageDao.insert(msg)
+                    }
                     // Auto-mark someone else's live message read if we're viewing its channel.
                     if (msg.userId != _state.value.userId && _state.value.stage == Stage.Chat &&
                         _state.value.currentChannel == msg.channel && msg.id.isNotBlank()) {

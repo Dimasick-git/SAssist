@@ -149,6 +149,10 @@ fun MessageView(
     onReply: (ChatMessage) -> Unit = {},
     onRetry: (String) -> Unit = {}
 ) {
+    // Don't render empty bubbles: a message with no text, no media and no reply
+    // carries nothing to show (e.g. an echo from a backend that stripped media).
+    if (msg.text.isBlank() && msg.media == null && msg.replyTo == null) return
+
     val clipboard = LocalClipboardManager.current
     val uriHandler = LocalUriHandler.current
     val time = remember(msg.ts) { SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(msg.ts)) }

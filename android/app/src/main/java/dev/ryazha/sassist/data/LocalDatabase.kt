@@ -52,6 +52,9 @@ interface MessageDao {
     @Query("SELECT * FROM messages WHERE isPending = 1 ORDER BY ts ASC")
     suspend fun getPendingMessages(): List<LocalMessage>
 
+    @Query("SELECT * FROM messages WHERE channel = :channel AND isPending = 1 ORDER BY ts ASC")
+    suspend fun pendingInChannel(channel: String): List<LocalMessage>
+
     @Query("SELECT * FROM messages WHERE id = :id LIMIT 1")
     suspend fun getById(id: String): LocalMessage?
 
