@@ -467,6 +467,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                 val kind = when {
                     mime.startsWith("image/") -> "image"
                     mime.startsWith("video/") -> "video"
+                    mime.startsWith("audio/") -> "audio"
                     else -> "file"
                 }
                 val r = MediaApi.upload(session.serverUrl, token, bytes, mime, name, kind)
@@ -565,7 +566,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
 
     fun lastPreview(ch: String): String {
         val m = _state.value.messagesByChannel[ch]?.lastOrNull() ?: return "Tap to start chatting"
-        val text = if (m.text.isBlank() && m.media != null) "[" + m.media.kind + "] " + m.media.name else m.text
+        val text = if (m.text.isBlank() && m.media != null) "[" + mediaKindLabel(m.media.kind) + "] " + m.media.name else m.text
         return (m.username + ": " + text).replace("\n", " ").take(48)
     }
 
@@ -635,3 +636,10 @@ fun jsonToReactions(s: String): Map<String, List<String>> = try {
     }
     out
 } catch (e: Exception) { emptyMap() }
+
+private fun mediaKindLabel(kind: String): String = when (kind) {
+    "image" -> "photo"
+    "video" -> "video"
+    "audio" -> "voice"
+    else -> "file"
+}
