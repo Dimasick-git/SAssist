@@ -24,10 +24,17 @@ import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.InsertDriveFile
+import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import dev.ryazha.sassist.audio.VoicePlayer
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -135,6 +142,9 @@ fun MessageView(
     myUserId: String = "",
     mediaUrl: (String) -> String = { "" },
     findMessage: (String) -> ChatMessage? = { null },
+    voiceState: VoicePlayer.PlayState = VoicePlayer.PlayState(),
+    onToggleVoice: (String, String) -> Unit = { _, _ -> },
+    nameOf: (String) -> String = { it },
     onReact: (String, String) -> Unit = { _, _ -> },
     onReply: (ChatMessage) -> Unit = {},
     onRetry: (String) -> Unit = {}
@@ -143,6 +153,8 @@ fun MessageView(
     val uriHandler = LocalUriHandler.current
     val time = remember(msg.ts) { SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(msg.ts)) }
     var menuOpen by remember { mutableStateOf(false) }
+    var videoUrl by remember { mutableStateOf<String?>(null) }
+    var readersOpen by remember { mutableStateOf(false) }
     val mine = myUserId.isNotBlank() && msg.userId == myUserId
     val bubbleColor = if (mine) Blurple else BgPanel
     val bubbleShape = RoundedCornerShape(
@@ -194,22 +206,43 @@ fun MessageView(
 
             msg.media?.let { media ->
                 val url = mediaUrl(media.id)
-                if (media.kind == "image") {
-                    AsyncImage(
+                when (media.kind) {
+                    "image" -> AsyncImage(
                         model = url,
                         contentDescription = media.name,
                         modifier = Modifier.padding(top = 4.dp).widthIn(max = 280.dp).heightIn(max = 340.dp)
                             .clip(RoundedCornerShape(12.dp)).clickable { uriHandler.openUri(url) }
                     )
-                } else {
-                    Row(
+                    "audio" -> VoiceBubble(
+                        mine = mine,
+                        durationMs = media.durationMs ?: 0L,
+                        playing = voiceState.messageId == msg.id && voiceState.playing,
+                        progress = if (voiceState.messageId == msg.id) voiceState.progress else 0f,
+                        onToggle = { onToggleVoice(msg.id, url) }
+                    )
+                    "video" -> Box(
+                        Modifier.padding(top = 4.dp).widthIn(max = 280.dp).height(170.dp)
+                            .clip(RoundedCornerShape(12.dp)).background(Color.Black)
+                            .clickable { videoUrl = url },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Box(Modifier.size(52.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.55f)), contentAlignment = Alignment.Center) {
+                            Icon(Icons.Filled.PlayArrow, contentDescription = "Play video", tint = Color.White, modifier = Modifier.size(34.dp))
+                        }
+                        media.durationMs?.let {
+                            Text(formatDuration(it), color = Color.White, fontSize = 11.sp,
+                                modifier = Modifier.align(Alignment.BottomEnd).padding(6.dp)
+                                    .clip(RoundedCornerShape(6.dp)).background(Color.Black.copy(alpha = 0.5f)).padding(horizontal = 5.dp, vertical = 1.dp))
+                        }
+                    }
+                    else -> Row(
                         Modifier.padding(top = 4.dp).clip(RoundedCornerShape(12.dp))
                             .background(if (mine) Color.White.copy(alpha = 0.14f) else BgInput)
                             .clickable { uriHandler.openUri(url) }
                             .padding(horizontal = 10.dp, vertical = 9.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(if (media.kind == "audio" || media.kind == "video") Icons.Filled.PlayArrow else Icons.Filled.InsertDriveFile, contentDescription = null, tint = TgAccent, modifier = Modifier.size(22.dp))
+                        Icon(Icons.Filled.InsertDriveFile, contentDescription = null, tint = TgAccent, modifier = Modifier.size(22.dp))
                         Spacer(Modifier.width(8.dp))
                         Column(Modifier.weight(1f, fill = false)) {
                             Text(media.name, color = TextPrimary, fontSize = 13.sp, maxLines = 1)
@@ -240,7 +273,14 @@ fun MessageView(
                 Text(time, color = if (mine) TextPrimary.copy(alpha = 0.72f) else TextMuted, fontSize = 10.sp)
                 if (mine) {
                     Spacer(Modifier.width(3.dp))
-                    Text(if (msg.isPending) "◷" else "✓✓", color = if (msg.isPending) TextMuted else Onlineish, fontSize = 11.sp)
+                    // ◷ queued, ✓ delivered (nobody read yet), ✓✓ read by someone.
+                    val read = msg.readBy.isNotEmpty()
+                    Text(
+                        if (msg.isPending) "◷" else if (read) "✓✓" else "✓",
+                        color = if (msg.isPending) TextPrimary.copy(alpha = 0.6f) else if (read) Onlineish else TextPrimary.copy(alpha = 0.72f),
+                        fontSize = 11.sp,
+                        modifier = if (read) Modifier.clickable { readersOpen = true } else Modifier
+                    )
                 }
             }
 
@@ -265,6 +305,68 @@ fun MessageView(
             }
         }
     }
+
+    // Fullscreen video player
+    videoUrl?.let { vurl ->
+        Dialog(onDismissRequest = { videoUrl = null }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+            Box(Modifier.fillMaxSize().background(Color.Black).clickable { videoUrl = null }, contentAlignment = Alignment.Center) {
+                AndroidView(factory = { ctx ->
+                    android.widget.VideoView(ctx).apply {
+                        setVideoURI(android.net.Uri.parse(vurl))
+                        val mc = android.widget.MediaController(ctx)
+                        mc.setAnchorView(this)
+                        setMediaController(mc)
+                        setOnPreparedListener { it.start() }
+                    }
+                }, modifier = Modifier.fillMaxWidth())
+            }
+        }
+    }
+
+    // Who read this message
+    if (readersOpen) {
+        Dialog(onDismissRequest = { readersOpen = false }) {
+            Column(Modifier.clip(RoundedCornerShape(14.dp)).background(BgPanel).padding(16.dp)) {
+                Text("Read by", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                Spacer(Modifier.height(8.dp))
+                if (msg.readBy.isEmpty()) Text("No one yet", color = TextMuted, fontSize = 13.sp)
+                else msg.readBy.forEach { uid ->
+                    Text("✓✓ " + nameOf(uid), color = TextPrimary, fontSize = 14.sp, modifier = Modifier.padding(vertical = 3.dp))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun VoiceBubble(mine: Boolean, durationMs: Long, playing: Boolean, progress: Float, onToggle: () -> Unit) {
+    Row(
+        Modifier.padding(top = 4.dp).widthIn(min = 180.dp, max = 260.dp)
+            .clip(RoundedCornerShape(20.dp))
+            .background(if (mine) Color.White.copy(alpha = 0.14f) else BgInput)
+            .clickable { onToggle() }
+            .padding(horizontal = 8.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(Modifier.size(38.dp).clip(CircleShape).background(TgAccent), contentAlignment = Alignment.Center) {
+            Icon(if (playing) Icons.Filled.Pause else Icons.Filled.PlayArrow, contentDescription = if (playing) "Pause" else "Play", tint = Color.White, modifier = Modifier.size(22.dp))
+        }
+        Spacer(Modifier.width(10.dp))
+        Column(Modifier.weight(1f)) {
+            LinearProgressIndicator(
+                progress = { if (playing || progress > 0f) progress else 0f },
+                modifier = Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)),
+                color = TgAccent, trackColor = if (mine) Color.White.copy(alpha = 0.25f) else BgPanel
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(formatDuration(durationMs), color = if (mine) TextPrimary.copy(alpha = 0.8f) else TextMuted, fontSize = 11.sp)
+        }
+    }
+}
+
+private fun formatDuration(ms: Long): String {
+    val totalSec = (ms / 1000).toInt()
+    return String.format(Locale.US, "%d:%02d", totalSec / 60, totalSec % 60)
 }
 
 @Composable

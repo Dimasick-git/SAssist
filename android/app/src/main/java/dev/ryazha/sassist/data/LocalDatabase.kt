@@ -16,9 +16,10 @@ data class LocalMessage(
     val color: String = "5865F2",
     val text: String,
     val ts: Long,
-    val mediaJson: String? = null,     // MediaRef as JSON
+    val mediaJson: String? = null,     // MediaRef as JSON (incl. durationMs)
     val replyTo: String? = null,
     val reactionsJson: String? = null, // Map<emoji, List<userId>> as JSON
+    val readByJson: String? = null,    // List<userId> who read this message
     val isPending: Boolean = false,
     val isFailed: Boolean = false,
     val attempts: Int = 0
@@ -51,6 +52,9 @@ interface MessageDao {
     @Query("SELECT * FROM messages WHERE isPending = 1 ORDER BY ts ASC")
     suspend fun getPendingMessages(): List<LocalMessage>
 
+    @Query("SELECT * FROM messages WHERE id = :id LIMIT 1")
+    suspend fun getById(id: String): LocalMessage?
+
     @Query("SELECT MAX(ts) FROM messages WHERE channel = :channel AND isPending = 0 AND isFailed = 0")
     suspend fun latestServerTs(channel: String): Long?
 
@@ -66,11 +70,17 @@ interface MessageDao {
     @Query("UPDATE messages SET reactionsJson = :reactions WHERE id = :id")
     suspend fun updateReactions(id: String, reactions: String?)
 
+    @Query("UPDATE messages SET readByJson = :json WHERE id = :id")
+    suspend fun updateReadBy(id: String, json: String?)
+
+    @Query("SELECT * FROM messages WHERE channel = :channel AND isPending = 0 AND isFailed = 0")
+    suspend fun serverRowsIn(channel: String): List<LocalMessage>
+
     @Query("DELETE FROM messages WHERE channel = :channel")
     suspend fun clearChannel(channel: String)
 }
 
-@Database(entities = [LocalMessage::class], version = 2, exportSchema = false)
+@Database(entities = [LocalMessage::class], version = 3, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun messageDao(): MessageDao
 

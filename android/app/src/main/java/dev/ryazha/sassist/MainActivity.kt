@@ -37,6 +37,7 @@ class MainActivity : ComponentActivity() {
             SAssistTheme {
                 val vm: ChatViewModel = viewModel()
                 val state by vm.state.collectAsState()
+                val voiceState by vm.voiceState.collectAsState()
 
                 BackHandler(enabled = state.stage != Stage.Welcome) {
                     when (state.stage) {
@@ -88,13 +89,20 @@ class MainActivity : ComponentActivity() {
                             connState = state.connState, myUserId = state.userId,
                             replyingTo = state.replyingTo, uploadBusy = state.uploadBusy,
                             hasCustomKey = state.customKeyChannels.contains(state.currentChannel),
-                            mediaUrl = { vm.mediaUrl(it) },
+                            recording = state.recording, recordingStartedAt = state.recordingStartedAt,
+                            voiceState = voiceState,
+                            mediaUrl = { vm.mediaUrl(it) }, nameOf = { vm.nameOf(it) },
                             onChannel = { vm.openChannel(it) }, onToggleCode = { vm.toggleCode() },
                             onSend = { vm.send(it) }, onSendMedia = { vm.sendMedia(it) },
                             onTyping = { vm.sendTyping() },
                             onReact = { id, emoji -> vm.react(id, emoji) },
                             onReply = { vm.startReply(it) }, onCancelReply = { vm.cancelReply() },
                             onRetry = { vm.retryMessage(it) },
+                            onToggleVoice = { id, url -> vm.toggleVoice(id, url) },
+                            onStartVoice = { vm.startVoiceRecording() },
+                            onStopVoice = { vm.stopAndSendVoice() },
+                            onCancelVoice = { vm.cancelVoiceRecording() },
+                            onMarkRead = { vm.markChannelRead(state.currentChannel) },
                             onSetRoomKey = { vm.setRoomKey(it) },
                             onOpenScripts = { vm.openScripts() },
                             onBack = { vm.backToChats() }

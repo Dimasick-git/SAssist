@@ -25,12 +25,13 @@ object MediaApi {
     fun mediaUrl(serverUrl: String, id: String): String =
         AuthApi.httpBase(serverUrl) + "/media/" + id
 
-    fun upload(serverUrl: String, token: String, bytes: ByteArray, mime: String, name: String, kind: String): UploadResult {
+    fun upload(serverUrl: String, token: String, bytes: ByteArray, mime: String, name: String, kind: String, durationMs: Long? = null): UploadResult {
         if (bytes.size > MAX_BYTES) return UploadResult(null, "file too large (max 30MB)")
         return try {
             val payload = JSONObject()
                 .put("dataBase64", Base64.encodeToString(bytes, Base64.NO_WRAP))
                 .put("mime", mime).put("name", name).put("kind", kind)
+                .apply { durationMs?.let { put("durationMs", it) } }
                 .toString()
             val req = Request.Builder()
                 .url(AuthApi.httpBase(serverUrl) + "/upload")
@@ -46,7 +47,8 @@ object MediaApi {
                         mime = m.optString("mime", mime), name = m.optString("name", name),
                         size = m.optLong("size", bytes.size.toLong()),
                         width = if (m.has("width")) m.optInt("width") else null,
-                        height = if (m.has("height")) m.optInt("height") else null
+                        height = if (m.has("height")) m.optInt("height") else null,
+                        durationMs = if (m.has("durationMs")) m.optLong("durationMs") else durationMs
                     ), null
                 )
             }

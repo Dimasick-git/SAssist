@@ -30,13 +30,22 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.delay
+import dev.ryazha.sassist.audio.VoicePlayer
 import dev.ryazha.sassist.model.ChatMessage
 import dev.ryazha.sassist.model.CHANNEL_META
 import dev.ryazha.sassist.model.ConnState
 import dev.ryazha.sassist.ui.theme.*
+
+private fun formatMillis(ms: Long): String {
+    val s = (ms / 1000).toInt()
+    return String.format(java.util.Locale.US, "%d:%02d", s / 60, s % 60)
+}
 
 @Composable
 fun ConnBanner(connState: ConnState) {
@@ -67,7 +76,11 @@ fun ChatScreen(
     replyingTo: ChatMessage?,
     uploadBusy: Boolean,
     hasCustomKey: Boolean,
+    recording: Boolean,
+    recordingStartedAt: Long,
+    voiceState: VoicePlayer.PlayState,
     mediaUrl: (String) -> String,
+    nameOf: (String) -> String,
     onChannel: (String) -> Unit,
     onToggleCode: () -> Unit,
     onSend: (String) -> Unit,
@@ -77,6 +90,11 @@ fun ChatScreen(
     onReply: (ChatMessage) -> Unit,
     onCancelReply: () -> Unit,
     onRetry: (String) -> Unit,
+    onToggleVoice: (String, String) -> Unit,
+    onStartVoice: () -> Unit,
+    onStopVoice: () -> Unit,
+    onCancelVoice: () -> Unit,
+    onMarkRead: () -> Unit,
     onSetRoomKey: (String) -> Unit,
     onOpenScripts: () -> Unit,
     onBack: () -> Unit
@@ -93,12 +111,20 @@ fun ChatScreen(
     val pickFile = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) onSendMedia(uri)
     }
-    val pickVoice = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        if (uri != null) onSendMedia(uri)
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var hasAudioPerm by remember {
+        mutableStateOf(
+            androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.RECORD_AUDIO) ==
+                android.content.pm.PackageManager.PERMISSION_GRANTED
+        )
+    }
+    val audioPermLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        hasAudioPerm = granted
     }
 
     LaunchedEffect(messages.size) {
         if (messages.isNotEmpty()) listState.animateScrollToItem(messages.size - 1)
+        onMarkRead()
     }
 
     val tf = TextFieldDefaults.colors(
@@ -172,6 +198,7 @@ fun ChatScreen(
                     MessageView(
                         msg = msg, myUserId = myUserId, mediaUrl = mediaUrl,
                         findMessage = { byId[it] },
+                        voiceState = voiceState, onToggleVoice = onToggleVoice, nameOf = nameOf,
                         onReact = onReact, onReply = onReply, onRetry = onRetry
                     )
                 }
@@ -209,6 +236,24 @@ fun ChatScreen(
             }
         }
 
+        // Recording indicator
+        if (recording) {
+            var elapsed by remember { mutableStateOf(0L) }
+            LaunchedEffect(recordingStartedAt) {
+                while (true) { elapsed = System.currentTimeMillis() - recordingStartedAt; delay(200) }
+            }
+            Row(
+                Modifier.fillMaxWidth().background(Color(0xFF3A1E1E)).padding(horizontal = 16.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(Modifier.size(10.dp).clip(RoundedCornerShape(5.dp)).background(Color(0xFFED4245)))
+                Spacer(Modifier.width(10.dp))
+                Text("Recording… " + formatMillis(elapsed), color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.weight(1f))
+                Text("release to send · slide off to cancel", color = TextMuted, fontSize = 11.sp)
+            }
+        }
+
         // Input
         Row(
             Modifier.fillMaxWidth().background(BgDark).padding(8.dp),
@@ -226,9 +271,6 @@ fun ChatScreen(
                 if (uploadBusy) CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp, color = TgAccent)
                 else Icon(Icons.Filled.AddPhotoAlternate, contentDescription = "Attach photo/video", tint = TextMuted)
             }
-            IconButton(onClick = { pickVoice.launch("audio/*") }, enabled = !uploadBusy) {
-                Icon(Icons.Filled.Mic, contentDescription = "Attach voice", tint = TextMuted)
-            }
             IconButton(onClick = { pickFile.launch("*/*") }, enabled = !uploadBusy) {
                 Icon(Icons.Filled.AttachFile, contentDescription = "Attach file", tint = TextMuted)
             }
@@ -243,15 +285,40 @@ fun ChatScreen(
                 keyboardOptions = KeyboardOptions(autoCorrect = !codeMode)
             )
             Spacer(Modifier.width(6.dp))
-            IconButton(
-                onClick = {
-                    val t = input.trim()
-                    if (t.isNotEmpty()) {
-                        val payload = if (codeMode) "\n```\n" + t + "\n```\n" else t
-                        onSend(payload); input = ""
-                    }
+            if (input.isBlank()) {
+                // Press-and-hold to record a voice message (Telegram-style).
+                Box(
+                    Modifier.size(46.dp).clip(RoundedCornerShape(23.dp))
+                        .background(if (recording) Color(0xFFED4245) else Blurple)
+                        .pointerInput(uploadBusy) {
+                            detectTapGestures(
+                                onPress = {
+                                    if (uploadBusy) return@detectTapGestures
+                                    if (!hasAudioPerm) {
+                                        audioPermLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
+                                        return@detectTapGestures
+                                    }
+                                    onStartVoice()
+                                    val released = tryAwaitRelease()
+                                    if (released) onStopVoice() else onCancelVoice()
+                                }
+                            )
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Filled.Mic, contentDescription = "Hold to record voice", tint = Color.White)
                 }
-            ) { Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send", tint = Blurple) }
+            } else {
+                IconButton(
+                    onClick = {
+                        val t = input.trim()
+                        if (t.isNotEmpty()) {
+                            val payload = if (codeMode) "\n```\n" + t + "\n```\n" else t
+                            onSend(payload); input = ""
+                        }
+                    }
+                ) { Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send", tint = Blurple) }
+            }
         }
     }
 

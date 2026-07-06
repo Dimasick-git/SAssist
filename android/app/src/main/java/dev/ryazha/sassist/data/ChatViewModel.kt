@@ -10,6 +10,8 @@ import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
+import dev.ryazha.sassist.audio.VoicePlayer
+import dev.ryazha.sassist.audio.VoiceRecorder
 import dev.ryazha.sassist.crypto.E2ee
 import dev.ryazha.sassist.model.AuthMethod
 import dev.ryazha.sassist.model.ChatMessage
@@ -73,7 +75,10 @@ data class ChatState(
     val replyingTo: ChatMessage? = null,
     val uploadBusy: Boolean = false,
     val profile: ProfileUi = ProfileUi(),
-    val customKeyChannels: Set<String> = emptySet()
+    val customKeyChannels: Set<String> = emptySet(),
+    val recording: Boolean = false,
+    val recordingStartedAt: Long = 0L,
+    val namesById: Map<String, String> = emptyMap()
 ) {
     val messages: List<ChatMessage> get() = messagesByChannel[currentChannel] ?: emptyList()
     val presence: Int get() = presenceByChannel[currentChannel] ?: 0
@@ -91,6 +96,11 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     private var messageJob: Job? = null
     private var reconnectJob: Job? = null
     private var backoffMs = 1_000L
+
+    private val recorder = VoiceRecorder(app)
+    val voicePlayer = VoicePlayer(viewModelScope)
+    val voiceState = voicePlayer.state
+    private val readSent = java.util.Collections.synchronizedSet(mutableSetOf<String>())
 
     val serverUrl: String get() = session.serverUrl
 
@@ -304,9 +314,20 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
             ts = mo.optLong("ts"),
             mediaJson = mo.optJSONObject("media")?.toString(),
             replyTo = if (mo.isNull("replyTo")) null else mo.optString("replyTo", null),
-            reactionsJson = mo.optJSONObject("reactions")?.toString()
+            reactionsJson = mo.optJSONObject("reactions")?.toString(),
+            readByJson = mo.optJSONArray("readBy")?.toString()
         )
     }
+
+    private fun rememberName(id: String?, name: String?) {
+        if (id.isNullOrBlank() || name.isNullOrBlank()) return
+        if (_state.value.namesById[id] == name) return
+        _state.update { it.copy(namesById = it.namesById + (id to name)) }
+    }
+
+    /** Resolve userIds to display names for the "read by" list. */
+    fun nameOf(userId: String): String =
+        if (userId == _state.value.userId) "You" else (_state.value.namesById[userId] ?: "someone")
 
     private fun handle(raw: String) {
         val o = try { JSONObject(raw) } catch (e: Exception) { return }
@@ -339,9 +360,15 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
             "message" -> {
                 val mo = o.optJSONObject("message") ?: return
                 val msg = parseMessage(mo)
+                rememberName(msg.userId, msg.username)
                 val cid = mo.optString("clientId", "")
                 viewModelScope.launch(Dispatchers.IO) {
                     if (cid.isNotEmpty()) messageDao.reconcile(cid, msg) else messageDao.insert(msg)
+                    // Auto-mark someone else's live message read if we're viewing its channel.
+                    if (msg.userId != _state.value.userId && _state.value.stage == Stage.Chat &&
+                        _state.value.currentChannel == msg.channel && msg.id.isNotBlank()) {
+                        sendRead(msg.channel, listOf(msg.id))
+                    }
                 }
             }
             "reaction" -> {
@@ -349,9 +376,29 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                 val reactions = o.optJSONObject("reactions")?.toString()
                 viewModelScope.launch(Dispatchers.IO) { messageDao.updateReactions(messageId, reactions) }
             }
+            "read" -> {
+                val messageId = o.optString("messageId")
+                val userId = o.optString("userId")
+                o.optJSONObject("user")?.let { rememberName(it.optString("id"), it.optString("displayName")) }
+                if (messageId.isNotBlank() && userId.isNotBlank()) {
+                    viewModelScope.launch(Dispatchers.IO) {
+                        val row = messageDao.getById(messageId) ?: return@launch
+                        val cur = row.readByJson?.let { jsonToStringList(it) }?.toMutableList() ?: mutableListOf()
+                        if (!cur.contains(userId)) {
+                            cur.add(userId)
+                            messageDao.updateReadBy(messageId, JSONArray(cur).toString())
+                        }
+                    }
+                }
+            }
             "presence" -> {
                 val ch = o.optString("channel")
-                val count = o.optJSONArray("users")?.length() ?: 0
+                val users = o.optJSONArray("users")
+                val count = users?.length() ?: 0
+                if (users != null) for (i in 0 until users.length()) {
+                    val u = users.optJSONObject(i) ?: continue
+                    rememberName(u.optString("id"), u.optString("displayName"))
+                }
                 _state.update { it.copy(presenceByChannel = it.presenceByChannel + (ch to count)) }
             }
             "typing" -> {
@@ -384,6 +431,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     fun openChannel(ch: String) {
         _state.update { it.copy(currentChannel = ch, stage = Stage.Chat, replyingTo = null) }
         client?.send(JSONObject().put("type", "switchChannel").put("channel", ch).toString())
+        viewModelScope.launch { delay(400); markChannelRead(ch) }
     }
     fun backToChats() { _state.update { it.copy(stage = Stage.Chats, replyingTo = null) } }
     fun openScripts() { _state.update { it.copy(returnStage = it.stage, stage = Stage.Scripts) } }
@@ -492,6 +540,60 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         )
     }
 
+    // ---- read receipts ----
+    private fun sendRead(channel: String, ids: List<String>) {
+        val fresh = ids.filter { it.isNotBlank() && !it.startsWith("local_") && readSent.add(channel + "|" + it) }
+        if (fresh.isEmpty() || _state.value.connState != ConnState.Connected) {
+            if (fresh.isNotEmpty()) fresh.forEach { readSent.remove(channel + "|" + it) } // retry later
+            return
+        }
+        client?.send(JSONObject().put("type", "read").put("channel", channel).put("messageIds", JSONArray(fresh)).toString())
+    }
+
+    /** Mark every visible message from other people as read. Called when the chat is shown. */
+    fun markChannelRead(channel: String) {
+        val me = _state.value.userId
+        val ids = _state.value.messagesByChannel[channel]?.filter { it.userId != me && it.userId.isNotBlank() }?.map { it.id } ?: return
+        if (ids.isNotEmpty()) sendRead(channel, ids)
+    }
+
+    // ---- voice messages ----
+    fun startVoiceRecording() {
+        if (_state.value.recording) return
+        if (recorder.start()) {
+            _state.update { it.copy(recording = true, recordingStartedAt = System.currentTimeMillis()) }
+        }
+    }
+
+    fun cancelVoiceRecording() {
+        recorder.cancel()
+        _state.update { it.copy(recording = false, recordingStartedAt = 0L) }
+    }
+
+    fun stopAndSendVoice() {
+        if (!_state.value.recording) return
+        val result = recorder.stop()
+        _state.update { it.copy(recording = false, recordingStartedAt = 0L) }
+        val token = session.token ?: return
+        if (result == null) return
+        _state.update { it.copy(uploadBusy = true) }
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val bytes = result.file.readBytes()
+                val name = "voice_" + (result.durationMs / 1000) + "s.m4a"
+                val r = MediaApi.upload(session.serverUrl, token, bytes, "audio/mp4", name, "audio", result.durationMs)
+                _state.update { it.copy(uploadBusy = false) }
+                if (r.media != null) enqueueAndSend(text = "", media = r.media)
+            } catch (e: Exception) {
+                _state.update { it.copy(uploadBusy = false) }
+            } finally {
+                result.file.delete()
+            }
+        }
+    }
+
+    fun toggleVoice(messageId: String, url: String) = voicePlayer.toggle(messageId, url)
+
     // ---- profile ----
     fun openProfile() {
         _state.update { it.copy(stage = Stage.Profile, profile = it.profile.copy(busy = true, error = null, notice = null)) }
@@ -589,11 +691,19 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     fun logout() {
         client?.close(); client = null
         reconnectJob?.cancel()
+        voicePlayer.release()
         session.clear()
+        readSent.clear()
         viewModelScope.launch(Dispatchers.IO) {
             for (ch in _state.value.channels) messageDao.clearChannel(ch)
             _state.value = ChatState()
         }
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        voicePlayer.release()
+        recorder.cancel()
     }
 }
 
@@ -605,6 +715,7 @@ fun LocalMessage.toChatMessage(): ChatMessage = ChatMessage(
     media = mediaJson?.let { jsonToMediaRef(it) },
     replyTo = replyTo,
     reactions = reactionsJson?.let { jsonToReactions(it) } ?: emptyMap(),
+    readBy = readByJson?.let { jsonToStringList(it) } ?: emptyList(),
     isPending = isPending, isFailed = isFailed
 )
 
@@ -614,6 +725,7 @@ fun mediaRefToJson(m: MediaRef): JSONObject = JSONObject()
     .apply {
         m.width?.let { put("width", it) }
         m.height?.let { put("height", it) }
+        m.durationMs?.let { put("durationMs", it) }
     }
 
 fun jsonToMediaRef(s: String): MediaRef? = try {
@@ -623,9 +735,15 @@ fun jsonToMediaRef(s: String): MediaRef? = try {
         mime = o.optString("mime", "application/octet-stream"),
         name = o.optString("name", "file"), size = o.optLong("size"),
         width = if (o.has("width")) o.optInt("width") else null,
-        height = if (o.has("height")) o.optInt("height") else null
+        height = if (o.has("height")) o.optInt("height") else null,
+        durationMs = if (o.has("durationMs")) o.optLong("durationMs") else null
     )
 } catch (e: Exception) { null }
+
+fun jsonToStringList(s: String): List<String> = try {
+    val arr = JSONArray(s)
+    (0 until arr.length()).map { arr.getString(it) }
+} catch (e: Exception) { emptyList() }
 
 fun jsonToReactions(s: String): Map<String, List<String>> = try {
     val o = JSONObject(s)

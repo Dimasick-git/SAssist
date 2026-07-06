@@ -10,7 +10,8 @@ data class MediaRef(
     val name: String,
     val size: Long,
     val width: Int? = null,
-    val height: Int? = null
+    val height: Int? = null,
+    val durationMs: Long? = null // voice/video length
 )
 
 @Serializable
@@ -27,6 +28,7 @@ data class ChatMessage(
     val media: MediaRef? = null,
     val replyTo: String? = null,
     val reactions: Map<String, List<String>> = emptyMap(),
+    val readBy: List<String> = emptyList(),
     val isPending: Boolean = false,
     val isFailed: Boolean = false
 )
