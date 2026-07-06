@@ -8,6 +8,9 @@ import { sendCode } from "./notify";
 import * as db from "./db";
 
 const PORT = Number(process.env.PORT) || 8080;
+// Some hosts (e.g. alwaysdata) require binding to a specific IP rather than
+// all interfaces. HOST unset -> listen on 0.0.0.0 (Docker, VPS, local).
+const HOST = process.env.HOST || process.env.ALWAYSDATA_HTTPD_IP || undefined;
 const HISTORY_LIMIT = 100;
 const DATA_DIR = process.env.DATA_DIR || path.join(process.cwd(), "data");
 const MEDIA_DIR = path.join(DATA_DIR, "media");
@@ -285,4 +288,5 @@ wss.on("connection", (ws) => {
   ws.on("close", () => { const c = clients.get(ws); clients.delete(ws); if (c) broadcastPresence(c.channel); });
 });
 
-server.listen(PORT, () => { console.log("SAssist server listening on :" + PORT + " (channels: " + [...channels].join(", ") + ")"); });
+const onListen = () => console.log("SAssist server listening on " + (HOST || "0.0.0.0") + ":" + PORT + " (channels: " + [...channels].join(", ") + ")");
+if (HOST) server.listen(PORT, HOST, onListen); else server.listen(PORT, onListen);

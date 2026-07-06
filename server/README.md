@@ -30,6 +30,7 @@ code is returned to the app and shown on the code screen. Configure delivery
 | Var | Default | Purpose |
 |---|---|---|
 | `PORT` | `8080` | listen port |
+| `HOST` | *(all interfaces)* | bind address. Set only if your host requires a specific IP (alwaysdata sets this automatically) |
 | `DATA_DIR` | `./data` (`/data` in Docker) | SQLite DB, media files, auth secret |
 | `AUTH_SECRET` | auto | token signing key. If unset, generated once and persisted to `DATA_DIR/auth_secret` — tokens survive restarts either way |
 | `PREMIUM_CODE` | *(off)* | set to enable Premium claims (`POST /premium/claim`). Unset = nobody can claim premium |

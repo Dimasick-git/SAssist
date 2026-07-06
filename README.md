@@ -29,6 +29,18 @@ cd android && ./gradlew :app:assembleDebug
 # install the APK, then: Sign in -> Server settings -> ws://<host>:8080
 ```
 
-Deploy configs for **Fly.io** (`fly.toml`, persistent volume) and **Render**
-(`render.yaml`, persistent disk) are included. CI builds the APK and runs the
-server smoke tests (including a restart-persistence check) on every push.
+## Free hosting
+
+| Option | Card? | Sleeps? | Keeps data? | Guide |
+|---|---|---|---|---|
+| **alwaysdata** (free 100 MB) | **No** | No | **Yes** (persistent FS) | [server/DEPLOY-alwaysdata.md](server/DEPLOY-alwaysdata.md) |
+| Oracle Cloud Always Free (VM) | Yes (once, no charge) | No | Yes | `docker compose up -d --build` on the VM |
+| Render (free) | No | Yes (15 min idle) | No (resets) | `render.yaml` blueprint |
+| Fly.io | Yes | No | Yes | `fly.toml` |
+
+**Recommended free-forever, no-card, keeps data: alwaysdata** — runs the Node
+WebSocket server on a persistent 100 MB plan. Follow
+[server/DEPLOY-alwaysdata.md](server/DEPLOY-alwaysdata.md).
+
+CI builds the APK and runs the server smoke tests (including a
+restart-persistence check) on every push.
