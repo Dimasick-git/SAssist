@@ -165,13 +165,14 @@ const server = http.createServer(async (req, res) => {
     let buf: Buffer;
     try { buf = Buffer.from(data, "base64"); } catch (e) { sendJson(res, 400, { ok: false, error: "bad base64" }); return; }
     if (buf.length > MEDIA_MAX) { sendJson(res, 413, { ok: false, error: "file too large (max 30MB)" }); return; }
-    const kind = (b.kind === "video" || b.kind === "file") ? b.kind : "image";
+    const kind = (b.kind === "video" || b.kind === "audio" || b.kind === "file") ? b.kind : "image";
     const mime = ("" + (b.mime || "application/octet-stream")).slice(0, 100);
     const name = ("" + (b.name || "file")).slice(0, 120);
+    const durationMs = Number(b.durationMs) > 0 ? Number(b.durationMs) : undefined;
     const id = newId("md");
     fs.writeFileSync(path.join(MEDIA_DIR, id + ".bin"), buf);
     fs.writeFileSync(path.join(MEDIA_DIR, id + ".json"), JSON.stringify({ id, kind, mime, name, size: buf.length, owner: u.id, ts: Date.now() }));
-    const media: MediaRef = { id, kind, mime, name, size: buf.length, width: b.width, height: b.height };
+    const media: MediaRef = { id, kind, mime, name, size: buf.length, width: b.width, height: b.height, durationMs };
     sendJson(res, 200, { ok: true, media, url: "/media/" + id });
     return;
   }
@@ -277,10 +278,26 @@ wss.on("connection", (ws) => {
             break;
           }
         }
-        // Everyone else gets the message without clientId; the sender's echo
-        // carries it so the client can match its optimistic local copy.
-        broadcastChannel(channel, { type: "message", message }, ws);
-        send(ws, { type: "message", message: clientId ? { ...message, clientId } : message });
+        // Every socket owned by the sender (this app + its background worker +
+        // any other device signed in as the same user) gets the clientId so it
+        // can reconcile its optimistic copy; everyone else gets it plain. This
+        // is what prevents duplicate bubbles across multiple sockets.
+        for (const c of clients.values()) {
+          if (c.channel !== channel) continue;
+          const own = c.id === message.userId;
+          send(c.ws, { type: "message", message: own && clientId ? { ...message, clientId } : message });
+        }
+        break;
+      }
+      case "read": {
+        if (!client) break;
+        const channel = (msg as any).channel || client.channel;
+        const ids: string[] = Array.isArray((msg as any).messageIds) ? (msg as any).messageIds.slice(0, 500) : [];
+        for (const mid of ids) {
+          if (db.markRead("" + mid, client.id)) {
+            broadcastChannel(channel, { type: "read", channel, messageId: "" + mid, userId: client.id, user: publicOf(client.id) });
+          }
+        }
         break;
       }
     }

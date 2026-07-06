@@ -36,6 +36,7 @@ Bearer auth: `Authorization: Bearer <token>` header (or `token` field in the JSO
 | `listChannels` | — | request channel list |
 | `typing` | `channel` | typing indicator (broadcast to others) |
 | `react` | `channel, messageId, emoji` | toggle own reaction |
+| `read` | `channel, messageIds[]` | mark messages as read by me (ignored for own messages) |
 
 ### server → client
 | type | fields |
@@ -43,6 +44,7 @@ Bearer auth: `Authorization: Bearer <token>` header (or `token` field in the JSO
 | `welcome` | `user: PublicUser, userId, username, channels[]` |
 | `message` | `message: ChatMessage` |
 | `reaction` | `channel, messageId, reactions{emoji: userId[]}` |
+| `read` | `channel, messageId, userId, user: PublicUser` |
 | `presence` | `channel, users: PublicUser[]` |
 | `typing` | `channel, user: PublicUser` |
 | `history` | `channel, messages[], since?` (`since` echoed on sync responses) |
@@ -71,9 +73,9 @@ restart. The `clientId` echo still works for secret messages.
 
 ```ts
 PublicUser  { id, displayName, handle, premium, color, bio? }
-MediaRef    { id, kind: "image"|"video"|"file", mime, name, size, width?, height? }
+MediaRef    { id, kind: "image"|"video"|"audio"|"file", mime, name, size, width?, height?, durationMs? }
 ChatMessage { id, channel, userId, username, handle, premium, color, text, ts,
-              media?, replyTo?, secret?, ttl?, reactions?, clientId? }
+              media?, replyTo?, secret?, ttl?, reactions?, clientId?, readBy? }
 ```
 
 Default channels: `general`, `code-help`, `showtime`.

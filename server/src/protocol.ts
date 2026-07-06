@@ -12,12 +12,13 @@ export interface PublicUser {
 
 export interface MediaRef {
   id: string;
-  kind: "image" | "video" | "file";
+  kind: "image" | "video" | "audio" | "file";
   mime: string;
   name: string;
   size: number;
   width?: number;
   height?: number;
+  durationMs?: number;   // voice/video length
 }
 
 export interface ChatMessage {
@@ -35,7 +36,8 @@ export interface ChatMessage {
   secret?: boolean;      // ephemeral / self-destruct
   ttl?: number;          // seconds to live after read (secret messages)
   reactions?: Record<string, string[]>;
-  clientId?: string;     // sender-supplied id, echoed back ONLY to the sender's socket
+  clientId?: string;     // sender-supplied id, echoed back to ALL of the sender's own sockets
+  readBy?: string[];     // userIds who have read this message (excludes the author)
 }
 
 export type ClientMsg =
@@ -45,12 +47,14 @@ export type ClientMsg =
   | { type: "listChannels" }
   | { type: "typing"; channel: string }
   | { type: "react"; channel: string; messageId: string; emoji: string }
+  | { type: "read"; channel: string; messageIds: string[] }               // mark messages read by me
   | { type: "history"; channel: string; since?: number; limit?: number };  // incremental sync: ts >= since
 
 export type ServerMsg =
   | { type: "welcome"; user: PublicUser; userId: string; username: string; channels: string[] }
   | { type: "message"; message: ChatMessage }
   | { type: "reaction"; channel: string; messageId: string; reactions: Record<string, string[]> }
+  | { type: "read"; channel: string; messageId: string; userId: string; user?: PublicUser }
   | { type: "presence"; channel: string; users: PublicUser[] }
   | { type: "typing"; channel: string; user: PublicUser }
   | { type: "history"; channel: string; messages: ChatMessage[]; since?: number }

@@ -48,6 +48,14 @@ CREATE TABLE IF NOT EXISTS messages (
 );
 CREATE INDEX IF NOT EXISTS idx_msgs_channel_ts ON messages(channel, ts);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_msgs_client ON messages(userId, clientId) WHERE clientId IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS reads (
+  messageId TEXT NOT NULL,
+  userId TEXT NOT NULL,
+  ts INTEGER NOT NULL,
+  PRIMARY KEY (messageId, userId)
+);
+CREATE INDEX IF NOT EXISTS idx_reads_msg ON reads(messageId);
 `);
 
 // ---- auth secret: env wins, otherwise generate once and keep in DATA_DIR ----
@@ -157,6 +165,23 @@ export function getMessageById(id: string): ChatMessage | undefined {
   return r ? rowToMessage(r) : undefined;
 }
 
+// Attach the readBy list to each message in one extra query (avoids N+1).
+function attachReads(msgs: ChatMessage[]): ChatMessage[] {
+  if (!msgs.length) return msgs;
+  const ids = msgs.map((m) => m.id);
+  const placeholders = ids.map(() => "?").join(",");
+  const rows = db.prepare(
+    "SELECT messageId, userId FROM reads WHERE messageId IN (" + placeholders + ")"
+  ).all(...ids) as { messageId: string; userId: string }[];
+  const byMsg = new Map<string, string[]>();
+  for (const r of rows) {
+    const arr = byMsg.get(r.messageId) || [];
+    arr.push(r.userId); byMsg.set(r.messageId, arr);
+  }
+  for (const m of msgs) { const rb = byMsg.get(m.id); if (rb && rb.length) m.readBy = rb; }
+  return msgs;
+}
+
 // Without `since`: the most recent `limit` messages in channel order.
 // With `since`: everything at ts >= since (inclusive -- the client dedupes
 // the overlap by id), capped at `limit`.
@@ -166,12 +191,26 @@ export function getHistory(channel: string, limit = 100, since?: number): ChatMe
     const rows = db.prepare(
       "SELECT * FROM messages WHERE channel = ? AND ts >= ? ORDER BY ts ASC, seq ASC LIMIT ?"
     ).all(channel, since, cap) as MsgRow[];
-    return rows.map(rowToMessage);
+    return attachReads(rows.map(rowToMessage));
   }
   const rows = db.prepare(
     "SELECT * FROM messages WHERE channel = ? ORDER BY ts DESC, seq DESC LIMIT ?"
   ).all(channel, cap) as MsgRow[];
-  return rows.reverse().map(rowToMessage);
+  return attachReads(rows.reverse().map(rowToMessage));
+}
+
+// Record that `userId` read `messageId` (no-op if they authored it or already
+// recorded). Returns true if this was a new read (so the caller broadcasts).
+export function markRead(messageId: string, userId: string): boolean {
+  const m = db.prepare("SELECT userId FROM messages WHERE id = ?").get(messageId) as { userId: string } | undefined;
+  if (!m || m.userId === userId) return false;
+  const r = db.prepare("INSERT OR IGNORE INTO reads (messageId, userId, ts) VALUES (?, ?, ?)").run(messageId, userId, Date.now());
+  return r.changes > 0;
+}
+
+export function getReaders(messageId: string): string[] {
+  const rows = db.prepare("SELECT userId FROM reads WHERE messageId = ?").all(messageId) as { userId: string }[];
+  return rows.map((r) => r.userId);
 }
 
 export function updateReactions(messageId: string, reactions: Record<string, string[]>): void {
