@@ -10,11 +10,11 @@ Jetpack Compose messenger client with an embedded JavaScript script console
 CI (`.github/workflows/android-build.yml`) builds a signed release APK.
 
 ## First run
-1. Deploy or start a server (see `../server/README.md`; `docker compose up -d --build` from the repo root is enough).
-2. In the app: **Sign in → Server settings** → enter your server URL:
-   - production: `wss://your-server.example`
-   - self-hosted LAN: `ws://192.168.x.x:8080` (add your host to `app/src/main/res/xml/network_security_config.xml` for cleartext)
-   - emulator against a local server: `ws://10.0.2.2:8080`
+1. Start the free local server on this machine from the repo root:
+   ```bash
+   docker compose up -d --build
+   ```
+2. The Android app defaults to `ws://10.0.2.2:8080`, which reaches that local server from the standard Android emulator. For a physical phone, open **Sign in → Server settings** and replace it with your computer's LAN address, for example `ws://192.168.x.x:8080` (also add that host to `app/src/main/res/xml/network_security_config.xml` for cleartext). Production deployments should use `wss://your-server.example`.
 3. Enter e-mail/phone. If the server has no SMTP/Twilio configured, the
    one-time code is shown right on the code screen.
 

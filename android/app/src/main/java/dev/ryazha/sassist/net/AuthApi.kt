@@ -4,6 +4,7 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.Response
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
@@ -27,6 +28,27 @@ object AuthApi {
     fun httpBase(ws: String): String =
         ws.trim().replace("wss://", "https://").replace("ws://", "http://").trimEnd('/')
 
+
+    private fun parseJsonResponse(resp: Response): JSONObject {
+        val raw = resp.body?.string().orEmpty()
+        val trimmed = raw.trimStart()
+        if (!resp.isSuccessful) {
+            val detail = if (trimmed.startsWith("{")) {
+                runCatching { JSONObject(trimmed).optString("error") }.getOrNull().orEmpty()
+            } else ""
+            throw IllegalStateException(detail.ifBlank { "Server returned HTTP ${resp.code}. Check Server URL." })
+        }
+        if (trimmed.isBlank()) return JSONObject()
+        if (!trimmed.startsWith("{")) {
+            val kind = when {
+                trimmed.startsWith("<!doctype", ignoreCase = true) || trimmed.startsWith("<html", ignoreCase = true) -> "HTML page"
+                else -> "non-JSON response"
+            }
+            throw IllegalStateException("Server returned $kind instead of SAssist API JSON. Open Server settings and use the backend URL, not a website page.")
+        }
+        return JSONObject(trimmed)
+    }
+
     fun requestCode(serverUrl: String, method: String, identifier: String): RequestResult {
         return try {
             val payload = JSONObject().put("method", method).put("identifier", identifier).toString()
@@ -34,7 +56,7 @@ object AuthApi {
                 .url(httpBase(serverUrl) + "/auth/request")
                 .post(payload.toRequestBody(JSON)).build()
             client.newCall(req).execute().use { resp ->
-                val j = JSONObject(resp.body?.string() ?: "{}")
+                val j = parseJsonResponse(resp)
                 RequestResult(
                     ok = j.optBoolean("ok"),
                     devCode = if (j.isNull("devCode")) null else j.optString("devCode", null),
@@ -56,7 +78,7 @@ object AuthApi {
                 .url(httpBase(serverUrl) + "/auth/verify")
                 .post(payload.toRequestBody(JSON)).build()
             client.newCall(req).execute().use { resp ->
-                val j = JSONObject(resp.body?.string() ?: "{}")
+                val j = parseJsonResponse(resp)
                 val user = j.optJSONObject("user")
                 VerifyResult(
                     ok = j.optBoolean("ok"),
@@ -91,7 +113,7 @@ object AuthApi {
                 .header("Authorization", "Bearer $token")
                 .post(body.toString().toRequestBody(JSON)).build()
             client.newCall(req).execute().use { resp ->
-                parseProfile(JSONObject(resp.body?.string() ?: "{}"))
+                parseProfile(parseJsonResponse(resp))
             }
         } catch (e: Exception) {
             ProfileResult(false, e.message ?: "network error")
@@ -105,7 +127,7 @@ object AuthApi {
                 .header("Authorization", "Bearer $token")
                 .get().build()
             client.newCall(req).execute().use { resp ->
-                parseProfile(JSONObject(resp.body?.string() ?: "{}"))
+                parseProfile(parseJsonResponse(resp))
             }
         } catch (e: Exception) {
             ProfileResult(false, e.message ?: "network error")
@@ -126,7 +148,7 @@ object AuthApi {
                 .url(httpBase(serverUrl) + "/handle/check?handle=" + java.net.URLEncoder.encode(handle, "UTF-8"))
                 .get().build()
             client.newCall(req).execute().use { resp ->
-                val j = JSONObject(resp.body?.string() ?: "{}")
+                val j = parseJsonResponse(resp)
                 HandleStatus(
                     valid = j.optBoolean("valid"), available = j.optBoolean("available"),
                     premiumOnly = j.optBoolean("premiumOnly"),

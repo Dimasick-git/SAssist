@@ -17,6 +17,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.AddPhotoAlternate
+import androidx.compose.material.icons.filled.AttachFile
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Lock
@@ -86,6 +88,12 @@ fun ChatScreen(
     val byId = remember(messages) { messages.associateBy { it.id } }
 
     val pickMedia = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        if (uri != null) onSendMedia(uri)
+    }
+    val pickFile = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) onSendMedia(uri)
+    }
+    val pickVoice = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) onSendMedia(uri)
     }
 
@@ -216,7 +224,13 @@ fun ChatScreen(
                 enabled = !uploadBusy
             ) {
                 if (uploadBusy) CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp, color = TgAccent)
-                else Icon(Icons.Filled.AddPhotoAlternate, contentDescription = "Attach", tint = TextMuted)
+                else Icon(Icons.Filled.AddPhotoAlternate, contentDescription = "Attach photo/video", tint = TextMuted)
+            }
+            IconButton(onClick = { pickVoice.launch("audio/*") }, enabled = !uploadBusy) {
+                Icon(Icons.Filled.Mic, contentDescription = "Attach voice", tint = TextMuted)
+            }
+            IconButton(onClick = { pickFile.launch("*/*") }, enabled = !uploadBusy) {
+                Icon(Icons.Filled.AttachFile, contentDescription = "Attach file", tint = TextMuted)
             }
             OutlinedTextField(
                 value = input, onValueChange = {
