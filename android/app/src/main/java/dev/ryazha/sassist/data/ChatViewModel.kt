@@ -148,7 +148,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     fun goWelcome() { _state.update { it.copy(stage = Stage.Welcome, authError = null) } }
     fun startAuth() { _state.update { it.copy(stage = Stage.EnterIdentifier, authError = null) } }
     fun setMethod(m: AuthMethod) { _state.update { it.copy(authMethod = m) } }
-    fun setServerUrl(url: String) { if (url.isNotBlank()) session.serverUrl = url.trim() }
+    fun setServerUrl(url: String) { session.serverUrl = url.trim() }
 
     // ---- auth ----
     fun requestCode(method: AuthMethod, identifier: String, username: String) {
