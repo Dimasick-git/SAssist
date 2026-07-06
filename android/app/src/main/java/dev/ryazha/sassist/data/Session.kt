@@ -13,9 +13,12 @@ import androidx.security.crypto.MasterKey
  */
 class Session(context: Context) {
     companion object {
-        // Free local backend: run `docker compose up -d --build` on this computer.
-        // Android emulator reaches the host machine through 10.0.2.2.
-        const val DEFAULT_SERVER_URL = "ws://10.0.2.2:8080"
+        // Free cloud backend target: deploy this repo to Koyeb's Free Instance
+        // as app `sassist` under org `dimasick-git` to get this public URL.
+        const val DEFAULT_SERVER_URL = "wss://sassist-dimasick-git.koyeb.app"
+
+        // Local fallback for emulator development: run `docker compose up -d --build`.
+        const val LOCAL_SERVER_URL = "ws://10.0.2.2:8080"
     }
 
     private val prefs: SharedPreferences = run {
@@ -43,8 +46,8 @@ class Session(context: Context) {
         get() = prefs.getString("username", null)
         set(v) { prefs.edit().putString("username", v).apply() }
 
-    // Defaults to the free local backend on the developer machine. Users can
-    // still replace it with a LAN/cloud URL in Server settings.
+    // Defaults to the free Koyeb cloud backend URL. Users can still replace it
+    // with their own Koyeb/LAN/local URL in Server settings.
     var serverUrl: String
         get() = prefs.getString("serverUrl", DEFAULT_SERVER_URL) ?: DEFAULT_SERVER_URL
         set(v) { prefs.edit().putString("serverUrl", v).apply() }
