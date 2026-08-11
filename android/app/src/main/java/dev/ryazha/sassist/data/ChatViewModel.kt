@@ -455,11 +455,6 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     fun closeScripts() { _state.update { it.copy(stage = it.returnStage) } }
     fun toggleCode() { _state.update { it.copy(codeMode = !it.codeMode) } }
 
-    fun sendTyping() {
-        val ch = _state.value.currentChannel
-        client?.send(JSONObject().put("type", "typing").put("channel", ch).toString())
-    }
-
     fun startReply(m: ChatMessage) { _state.update { it.copy(replyingTo = m) } }
     fun cancelReply() { _state.update { it.copy(replyingTo = null) } }
 
