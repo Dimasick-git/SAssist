@@ -25,6 +25,7 @@ import dev.ryazha.sassist.ui.ChatScreen
 import dev.ryazha.sassist.ui.ChatsListScreen
 import dev.ryazha.sassist.ui.CodeScreen
 import dev.ryazha.sassist.ui.ProfileScreen
+import dev.ryazha.sassist.ui.PublicProfileScreen
 import dev.ryazha.sassist.ui.ScriptScreen
 import dev.ryazha.sassist.ui.WelcomeScreen
 import dev.ryazha.sassist.ui.theme.BgDarkest
@@ -44,6 +45,7 @@ class MainActivity : ComponentActivity() {
                         Stage.Chat -> vm.backToChats()
                         Stage.Scripts -> vm.closeScripts()
                         Stage.Profile -> vm.closeProfile()
+                        Stage.UserProfile -> vm.closeUserProfile()
                         Stage.EnterCode -> vm.startAuth()
                         Stage.EnterIdentifier -> vm.goWelcome()
                         Stage.Chats -> { /* stay */ }
@@ -97,6 +99,7 @@ class MainActivity : ComponentActivity() {
                             onTyping = { vm.sendTyping() },
                             onReact = { id, emoji -> vm.react(id, emoji) },
                             onReply = { vm.startReply(it) }, onCancelReply = { vm.cancelReply() },
+                            onOpenUserProfile = { vm.openUserProfile(it.userId) },
                             onRetry = { vm.retryMessage(it) },
                             onToggleVoice = { id, url -> vm.toggleVoice(id, url) },
                             onStartVoice = { vm.startVoiceRecording() },
@@ -117,6 +120,12 @@ class MainActivity : ComponentActivity() {
                             onClaimHandle = { vm.claimHandle(it) },
                             onLogout = { vm.logout() },
                             onBack = { vm.closeProfile() }
+                        )
+                        Stage.UserProfile -> PublicProfileScreen(
+                            profile = state.viewedProfile,
+                            mediaUrl = { vm.mediaUrl(it) },
+                            onMessage = { vm.startDirectMessage(state.viewedProfile.userId) },
+                            onBack = { vm.closeUserProfile() }
                         )
                         Stage.Scripts -> ScriptScreen(
                             lastMessage = state.messages.lastOrNull()?.text ?: "",

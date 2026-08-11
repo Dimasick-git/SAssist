@@ -35,7 +35,7 @@ data class ChatMessage(
 
 enum class ConnState { Disconnected, Connecting, Connected, Error }
 
-enum class Stage { Welcome, EnterIdentifier, EnterCode, Chats, Chat, Scripts, Profile }
+enum class Stage { Welcome, EnterIdentifier, EnterCode, Chats, Chat, Scripts, Profile, UserProfile }
 
 enum class AuthMethod { Phone, Email }
 

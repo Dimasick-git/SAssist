@@ -12,6 +12,6 @@
 - [x] Verify the Android release build and commit all completed changes under the repository owner's identity.
 - [x] Reproduce and fix Android avatar upload/profile persistence, including its server-side validation and retrieval path.
 - [x] Add a user-selectable profile banner with persistent media storage and readable automatic color fallbacks.
-- [ ] Add tappable chat identities that open public user profiles with an action to start a private conversation.
-- [ ] Extend the transport and storage model for private E2EE conversations routed by the server without plaintext access.
+- [x] Add tappable chat identities that open public user profiles with an action to start a private conversation.
+- [x] Extend the transport and storage model for private E2EE conversations routed by the server without plaintext access.
 - [ ] Add regression coverage for profile media and private conversation routing, then verify the Android release build.

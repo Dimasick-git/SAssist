@@ -57,6 +57,19 @@ data class ProfileUi(
     val handleCheck: String? = null
 )
 
+data class PublicProfileUi(
+    val userId: String = "",
+    val displayName: String = "",
+    val handle: String = "",
+    val premium: Boolean = false,
+    val color: String = "5865F2",
+    val bio: String = "",
+    val avatarId: String = "",
+    val bannerId: String = "",
+    val busy: Boolean = false,
+    val error: String? = null
+)
+
 data class ChatState(
     val stage: Stage = Stage.Welcome,
     val connState: ConnState = ConnState.Disconnected,
@@ -79,6 +92,7 @@ data class ChatState(
     val replyingTo: ChatMessage? = null,
     val uploadBusy: Boolean = false,
     val profile: ProfileUi = ProfileUi(),
+    val viewedProfile: PublicProfileUi = PublicProfileUi(),
     val customKeyChannels: Set<String> = emptySet(),
     val recording: Boolean = false,
     val recordingStartedAt: Long = 0L,
@@ -436,6 +450,22 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                 val chans = jsonStrings(o.optJSONArray("channels"))
                 if (chans.isNotEmpty()) _state.update { it.copy(channels = chans) }
             }
+            "dmStarted" -> {
+                val channel = o.optString("channel")
+                val peer = o.optJSONObject("user")
+                if (channel.isBlank()) return
+                peer?.let { rememberName(it.optString("id"), it.optString("displayName")) }
+                _state.update { state ->
+                    state.copy(
+                        channels = (state.channels + channel).distinct(),
+                        currentChannel = channel,
+                        stage = Stage.Chat,
+                        replyingTo = null
+                    )
+                }
+                refreshCustomKeyFlags()
+                client?.send(JSONObject().put("type", "switchChannel").put("channel", channel).toString())
+            }
         }
     }
 
@@ -666,6 +696,32 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
     fun closeProfile() { _state.update { it.copy(stage = Stage.Chats) } }
+
+    fun openUserProfile(userId: String) {
+        if (userId.isBlank()) return
+        if (userId == _state.value.userId) { openProfile(); return }
+        val token = session.token ?: return
+        _state.update { it.copy(stage = Stage.UserProfile, viewedProfile = PublicProfileUi(userId = userId, busy = true)) }
+        viewModelScope.launch(Dispatchers.IO) {
+            val r = AuthApi.getUserProfile(session.serverUrl, token, userId)
+            _state.update {
+                it.copy(viewedProfile = if (r.ok) PublicProfileUi(
+                    userId = r.userId ?: userId,
+                    displayName = r.displayName ?: "SAssist member",
+                    handle = r.handle ?: "", premium = r.premium,
+                    color = r.color ?: "5865F2", bio = r.bio ?: "",
+                    avatarId = r.avatarId ?: "", bannerId = r.bannerId ?: ""
+                ) else PublicProfileUi(userId = userId, error = r.error ?: "Profile is unavailable"))
+            }
+        }
+    }
+
+    fun closeUserProfile() { _state.update { it.copy(stage = Stage.Chat) } }
+
+    fun startDirectMessage(userId: String) {
+        if (userId.isBlank() || userId == _state.value.userId) return
+        client?.send(JSONObject().put("type", "startDm").put("userId", userId).toString())
+    }
 
     private fun applyProfile(r: AuthApi.ProfileResult, notice: String?) {
         _state.update {

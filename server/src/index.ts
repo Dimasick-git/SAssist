@@ -48,6 +48,12 @@ function usersIn(channel: string): PublicUser[] {
   for (const c of clients.values()) if (c.channel === channel && !seen.has(c.id)) { seen.add(c.id); out.push(publicOf(c.id)); }
   return out.sort((a, b) => a.displayName.localeCompare(b.displayName));
 }
+function availableChannels(userId: string): string[] { return [...channels, ...db.directChannelsForUser(userId)]; }
+function canAccessChannel(userId: string, channel: string): boolean { return channels.has(channel) || db.isDirectChannelMember(channel, userId); }
+function sendChannelList(userId: string) {
+  const payload: ServerMsg = { type: "channels", channels: availableChannels(userId) };
+  for (const c of clients.values()) if (c.id === userId) send(c.ws, payload);
+}
 function broadcastChannel(channel: string, msg: ServerMsg, exceptWs?: WebSocket) {
   for (const c of clients.values()) if (c.channel === channel && c.ws !== exceptWs) send(c.ws, msg);
 }
@@ -137,6 +143,15 @@ const server = http.createServer(async (req, res) => {
     sendJson(res, 200, { ok: true, user: toPublic(u) });
     return;
   }
+  if (req.method === "GET" && url.startsWith("/users/")) {
+    const requester = userForToken(tokenFrom(req, {}));
+    if (!requester) { sendJson(res, 401, { ok: false, error: "auth required" }); return; }
+    const id = url.slice("/users/".length).replace(/[^A-Za-z0-9_]/g, "");
+    const target = getUser(id);
+    if (!target) { sendJson(res, 404, { ok: false, error: "user not found" }); return; }
+    sendJson(res, 200, { ok: true, user: toPublic(target) });
+    return;
+  }
   if (req.method === "POST" && url === "/profile") {
     const b = await readBody(req);
     const u = userForToken(tokenFrom(req, b));
@@ -204,16 +219,16 @@ wss.on("connection", (ws) => {
         const c: Client = { id: user.id, ws, channel: "general" };
         clients.set(ws, c);
         const pub = toPublic(user);
-        send(ws, { type: "welcome", user: pub, userId: pub.id, username: pub.displayName, channels: [...channels] });
+        send(ws, { type: "welcome", user: pub, userId: pub.id, username: pub.displayName, channels: availableChannels(user.id) });
         send(ws, { type: "history", channel: c.channel, messages: db.getHistory(c.channel, HISTORY_LIMIT) });
         broadcastPresence(c.channel);
         break;
       }
-      case "listChannels": { send(ws, { type: "channels", channels: [...channels] }); break; }
+      case "listChannels": { if (client) send(ws, { type: "channels", channels: availableChannels(client.id) }); break; }
       case "switchChannel": {
         if (!client) { send(ws, { type: "error", reason: "join first" }); break; }
         const target = (msg as any).channel;
-        if (!channels.has(target)) { send(ws, { type: "error", reason: "no such channel" }); break; }
+        if (!canAccessChannel(client.id, target)) { send(ws, { type: "error", reason: "no such channel" }); break; }
         const prev = client.channel; client.channel = target;
         send(ws, { type: "history", channel: target, messages: db.getHistory(target, HISTORY_LIMIT) });
         broadcastPresence(prev); broadcastPresence(target);
@@ -222,7 +237,7 @@ wss.on("connection", (ws) => {
       case "history": {
         if (!client) { send(ws, { type: "error", reason: "join first" }); break; }
         const channel = "" + ((msg as any).channel || client.channel);
-        if (!channels.has(channel)) { send(ws, { type: "error", reason: "no such channel" }); break; }
+        if (!canAccessChannel(client.id, channel)) { send(ws, { type: "error", reason: "no such channel" }); break; }
         const sinceRaw = Number((msg as any).since);
         const since = Number.isFinite(sinceRaw) && sinceRaw > 0 ? sinceRaw : undefined;
         const limitRaw = Number((msg as any).limit);
@@ -233,12 +248,14 @@ wss.on("connection", (ws) => {
       case "typing": {
         if (!client) break;
         const channel = (msg as any).channel || client.channel;
+        if (!canAccessChannel(client.id, channel)) break;
         broadcastChannel(channel, { type: "typing", channel, user: publicOf(client.id) }, ws);
         break;
       }
       case "react": {
         if (!client) break;
         const channel = (msg as any).channel || client.channel;
+        if (!canAccessChannel(client.id, channel)) break;
         const m = db.getMessageById("" + (msg as any).messageId);
         if (!m || m.channel !== channel) break;
         const emoji = ("" + (msg as any).emoji).slice(0, 8);
@@ -254,7 +271,7 @@ wss.on("connection", (ws) => {
       case "send": {
         if (!client) { send(ws, { type: "error", reason: "join first" }); break; }
         const channel = (msg as any).channel || client.channel;
-        if (!channels.has(channel)) { send(ws, { type: "error", reason: "no such channel" }); break; }
+        if (!canAccessChannel(client.id, channel)) { send(ws, { type: "error", reason: "no such channel" }); break; }
         const text = ((msg as any).text || "").slice(0, 8000);
         const media: MediaRef | undefined = (msg as any).media;
         if (!text.trim() && !media) break;
@@ -292,12 +309,24 @@ wss.on("connection", (ws) => {
       case "read": {
         if (!client) break;
         const channel = (msg as any).channel || client.channel;
+        if (!canAccessChannel(client.id, channel)) break;
         const ids: string[] = Array.isArray((msg as any).messageIds) ? (msg as any).messageIds.slice(0, 500) : [];
         for (const mid of ids) {
           if (db.markRead("" + mid, client.id)) {
             broadcastChannel(channel, { type: "read", channel, messageId: "" + mid, userId: client.id, user: publicOf(client.id) });
           }
         }
+        break;
+      }
+      case "startDm": {
+        if (!client) { send(ws, { type: "error", reason: "join first" }); break; }
+        const peerId = ("" + (msg as any).userId).replace(/[^A-Za-z0-9_]/g, "");
+        const peer = getUser(peerId);
+        if (!peer || peerId === client.id) { send(ws, { type: "error", reason: "user not found" }); break; }
+        const channel = db.createDirectChannel(client.id, peerId);
+        sendChannelList(client.id);
+        sendChannelList(peerId);
+        send(ws, { type: "dmStarted", channel, user: toPublic(peer) });
         break;
       }
     }

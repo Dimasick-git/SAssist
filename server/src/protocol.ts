@@ -46,6 +46,7 @@ export type ClientMsg =
   | { type: "join"; token: string }
   | { type: "send"; channel: string; text: string; clientId?: string; media?: MediaRef; replyTo?: string; secret?: boolean; ttl?: number }
   | { type: "switchChannel"; channel: string }
+  | { type: "startDm"; userId: string }
   | { type: "listChannels" }
   | { type: "typing"; channel: string }
   | { type: "react"; channel: string; messageId: string; emoji: string }
@@ -61,6 +62,7 @@ export type ServerMsg =
   | { type: "typing"; channel: string; user: PublicUser }
   | { type: "history"; channel: string; messages: ChatMessage[]; since?: number }
   | { type: "channels"; channels: string[] }
+  | { type: "dmStarted"; channel: string; user: PublicUser }
   | { type: "error"; reason: string };
 
 export function parseClientMsg(raw: string): ClientMsg | null {

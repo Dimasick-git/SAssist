@@ -153,7 +153,8 @@ fun MessageView(
     nameOf: (String) -> String = { it },
     onReact: (String, String) -> Unit = { _, _ -> },
     onReply: (ChatMessage) -> Unit = {},
-    onRetry: (String) -> Unit = {}
+    onRetry: (String) -> Unit = {},
+    onOpenProfile: (ChatMessage) -> Unit = {}
 ) {
     // Don't render empty bubbles: a message with no text, no media and no reply
     // carries nothing to show (e.g. an echo from a backend that stripped media).
@@ -187,7 +188,7 @@ fun MessageView(
         horizontalArrangement = if (mine) Arrangement.End else Arrangement.Start,
         verticalAlignment = Alignment.Bottom
     ) {
-        if (!mine) Avatar(msg)
+        if (!mine) Avatar(msg) { onOpenProfile(msg) }
         if (!mine) Spacer(Modifier.width(7.dp))
         Column(
             Modifier.widthIn(max = 310.dp)
@@ -197,7 +198,7 @@ fun MessageView(
                 .padding(horizontal = 10.dp, vertical = 7.dp)
         ) {
             if (!mine) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.clickable { onOpenProfile(msg) }, verticalAlignment = Alignment.CenterVertically) {
                     Text(msg.username, color = userColor(msg), fontWeight = FontWeight.Bold, fontSize = 13.sp)
                     if (msg.premium) Text(" ★", color = Color(0xFFFEE75C), fontSize = 12.sp)
                     if (msg.handle.isNotBlank()) Text(" @" + msg.handle, color = TextMuted, fontSize = 11.sp)
@@ -386,9 +387,9 @@ private fun formatDuration(ms: Long): String {
 }
 
 @Composable
-private fun Avatar(msg: ChatMessage) {
+private fun Avatar(msg: ChatMessage, onClick: () -> Unit) {
     Box(
-        Modifier.size(34.dp).clip(CircleShape).background(userColor(msg)),
+        Modifier.size(34.dp).clip(CircleShape).background(userColor(msg)).clickable { onClick() },
         contentAlignment = Alignment.Center
     ) {
         Text(msg.username.trim().take(1).ifBlank { "?" }.uppercase(Locale.getDefault()), color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)

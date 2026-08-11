@@ -88,6 +88,7 @@ fun ChatScreen(
     onTyping: () -> Unit,
     onReact: (String, String) -> Unit,
     onReply: (ChatMessage) -> Unit,
+    onOpenUserProfile: (ChatMessage) -> Unit,
     onCancelReply: () -> Unit,
     onRetry: (String) -> Unit,
     onToggleVoice: (String, String) -> Unit,
@@ -102,7 +103,8 @@ fun ChatScreen(
     var input by remember { mutableStateOf("") }
     var keyDialog by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
-    val title = CHANNEL_META[currentChannel]?.title ?: currentChannel
+    val isDirect = currentChannel.startsWith("dm:")
+    val title = if (isDirect) "Direct message" else (CHANNEL_META[currentChannel]?.title ?: currentChannel)
     val byId = remember(messages) { messages.associateBy { it.id } }
 
     val pickMedia = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
@@ -182,9 +184,18 @@ fun ChatScreen(
                         .clickable { onChannel(ch) }.padding(horizontal = 12.dp, vertical = 7.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text((meta?.emoji ?: "#") + " " + (meta?.title ?: ch), color = if (sel) TextPrimary else TextMuted, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                    val label = if (ch.startsWith("dm:")) "✉ Direct" else ((meta?.emoji ?: "#") + " " + (meta?.title ?: ch))
+                    Text(label, color = if (sel) TextPrimary else TextMuted, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                 }
             }
+        }
+
+        if (isDirect && !hasCustomKey) {
+            Text(
+                "Set the same room key on both devices to encrypt this direct conversation.",
+                color = Color(0xFFFAA61A), fontSize = 11.sp,
+                modifier = Modifier.fillMaxWidth().background(BgPanel).padding(horizontal = 14.dp, vertical = 6.dp)
+            )
         }
 
         // Messages
@@ -199,7 +210,7 @@ fun ChatScreen(
                         msg = msg, myUserId = myUserId, mediaUrl = mediaUrl,
                         findMessage = { byId[it] },
                         voiceState = voiceState, onToggleVoice = onToggleVoice, nameOf = nameOf,
-                        onReact = onReact, onReply = onReply, onRetry = onRetry
+                        onReact = onReact, onReply = onReply, onRetry = onRetry, onOpenProfile = onOpenUserProfile
                     )
                 }
             }

@@ -20,6 +20,7 @@ object AuthApi {
     data class VerifyResult(val ok: Boolean, val token: String?, val username: String?, val error: String?)
     data class ProfileResult(
         val ok: Boolean, val error: String?,
+        val userId: String? = null,
         val displayName: String? = null, val handle: String? = null,
         val premium: Boolean = false, val color: String? = null, val bio: String? = null,
         val avatarId: String? = null, val bannerId: String? = null
@@ -99,6 +100,7 @@ object AuthApi {
         return ProfileResult(
             ok = j.optBoolean("ok"),
             error = if (j.isNull("error")) null else j.optString("error", null),
+            userId = u?.optString("id")?.takeIf { it.isNotBlank() },
             displayName = u?.optString("displayName"),
             handle = u?.optString("handle"),
             premium = u?.optBoolean("premium") ?: false,
@@ -132,6 +134,18 @@ object AuthApi {
             client.newCall(req).execute().use { resp ->
                 parseProfile(parseJsonResponse(resp))
             }
+        } catch (e: Exception) {
+            ProfileResult(false, e.message ?: "network error")
+        }
+    }
+
+    fun getUserProfile(serverUrl: String, token: String, userId: String): ProfileResult {
+        return try {
+            val req = Request.Builder()
+                .url(httpBase(serverUrl) + "/users/" + java.net.URLEncoder.encode(userId, "UTF-8"))
+                .header("Authorization", "Bearer $token")
+                .get().build()
+            client.newCall(req).execute().use { response -> parseProfile(parseJsonResponse(response)) }
         } catch (e: Exception) {
             ProfileResult(false, e.message ?: "network error")
         }

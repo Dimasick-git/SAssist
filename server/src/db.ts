@@ -32,6 +32,16 @@ CREATE TABLE IF NOT EXISTS users (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_users_handle ON users(handle) WHERE handle != '';
 
+CREATE TABLE IF NOT EXISTS direct_channels (
+  channel TEXT PRIMARY KEY,
+  memberA TEXT NOT NULL,
+  memberB TEXT NOT NULL,
+  createdAt INTEGER NOT NULL,
+  CHECK(memberA < memberB)
+);
+CREATE INDEX IF NOT EXISTS idx_direct_channels_a ON direct_channels(memberA);
+CREATE INDEX IF NOT EXISTS idx_direct_channels_b ON direct_channels(memberB);
+
 CREATE TABLE IF NOT EXISTS messages (
   seq INTEGER PRIMARY KEY AUTOINCREMENT,
   id TEXT NOT NULL UNIQUE,
@@ -123,6 +133,27 @@ export function importUsersJsonIfPresent(): number {
     fs.renameSync(file, file + ".imported");
   } catch (e) { console.error("users.json import failed", e); }
   return count;
+}
+
+// ---- private direct channels ----
+export function createDirectChannel(firstUserId: string, secondUserId: string): string {
+  const [memberA, memberB] = [firstUserId, secondUserId].sort();
+  if (!memberA || !memberB || memberA === memberB) throw new Error("two distinct users are required");
+  const channel = `dm:${memberA}:${memberB}`;
+  db.prepare("INSERT OR IGNORE INTO direct_channels (channel, memberA, memberB, createdAt) VALUES (?, ?, ?, ?)")
+    .run(channel, memberA, memberB, Date.now());
+  return channel;
+}
+
+export function directChannelsForUser(userId: string): string[] {
+  const rows = db.prepare("SELECT channel FROM direct_channels WHERE memberA = ? OR memberB = ? ORDER BY createdAt ASC")
+    .all(userId, userId) as { channel: string }[];
+  return rows.map((row) => row.channel);
+}
+
+export function isDirectChannelMember(channel: string, userId: string): boolean {
+  return !!db.prepare("SELECT 1 FROM direct_channels WHERE channel = ? AND (memberA = ? OR memberB = ?) LIMIT 1")
+    .get(channel, userId, userId);
 }
 
 // ---- messages ----
