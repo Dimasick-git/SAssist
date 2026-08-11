@@ -22,6 +22,8 @@ import dev.ryazha.sassist.net.AuthApi
 import dev.ryazha.sassist.net.ChatClient
 import dev.ryazha.sassist.net.ConnectivityObserver
 import dev.ryazha.sassist.net.MediaApi
+import dev.ryazha.sassist.script.ScriptEngine
+import dev.ryazha.sassist.script.ScriptHost
 import dev.ryazha.sassist.work.SendQueueWorker
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
