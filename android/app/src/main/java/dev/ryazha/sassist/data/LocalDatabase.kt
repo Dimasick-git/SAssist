@@ -17,6 +17,7 @@ data class LocalMessage(
     val text: String,
     val ts: Long,
     val mediaJson: String? = null,     // MediaRef as JSON (incl. durationMs)
+    val localMediaUri: String? = null, // Local URI for pending uploads
     val replyTo: String? = null,
     val reactionsJson: String? = null, // Map<emoji, List<userId>> as JSON
     val readByJson: String? = null,    // List<userId> who read this message

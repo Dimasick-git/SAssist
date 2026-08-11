@@ -4,7 +4,7 @@ import kotlinx.serialization.Serializable
 
 @Serializable
 data class MediaRef(
-    val id: String,
+    val id: String = "",
     val kind: String, // "image" | "video" | "audio" | "file"
     val mime: String,
     val name: String,

@@ -462,11 +462,11 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     fun startReply(m: ChatMessage) { _state.update { it.copy(replyingTo = m) } }
     fun cancelReply() { _state.update { it.copy(replyingTo = null) } }
 
-    fun send(text: String) {
+    fun send(text: String, isCommand: Boolean = true) {
         if (text.isBlank()) return
         
         // Intercept chat commands (e.g. /fib 10)
-        if (text.startsWith("/") && !text.startsWith("/\n```")) {
+        if (isCommand && text.startsWith("/") && !text.startsWith("/\n```")) {
             executeChatCommand(text.removePrefix("/"))
             return
         }
@@ -477,7 +477,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun executeChatCommand(cmd: String) {
         viewModelScope.launch(Dispatchers.Default) {
-            val host = ScriptHost(onSend = { send(it) }, lastMessageText = _state.value.messages.lastOrNull()?.text ?: "")
+            val host = ScriptHost(onSend = { send(it, isCommand = false) }, lastMessageText = _state.value.messages.lastOrNull()?.text ?: "")
             // Simple command parser: try to find a sample or just run as JS
             val code = when {
                 cmd.startsWith("fib ") -> "sa.send('fib=' + (function f(n){return n<2?n:f(n-1)+f(n-2)})( " + cmd.removePrefix("fib ") + "));"
@@ -488,7 +488,17 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    private fun enqueueAndSend(text: String, media: MediaRef?) {
+    private var typingJob: Job? = null
+    fun sendTyping() {
+        typingJob?.cancel()
+        typingJob = viewModelScope.launch {
+            val ch = _state.value.currentChannel
+            client?.send(JSONObject().put("type", "typing").put("channel", ch).toString())
+            delay(2000) // Debounce typing status
+        }
+    }
+
+    private fun enqueueAndSend(text: String, media: MediaRef?, localUri: String? = null) {
         val s = _state.value
         val ch = s.currentChannel
         val clientId = UUID.randomUUID().toString()
@@ -498,12 +508,13 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
             userId = s.userId, username = s.username, text = text,
             ts = System.currentTimeMillis(),
             mediaJson = media?.let { mediaRefToJson(it).toString() },
+            localMediaUri = localUri,
             replyTo = replyTo, isPending = true
         )
         _state.update { it.copy(replyingTo = null) }
         viewModelScope.launch(Dispatchers.IO) {
             messageDao.insert(local)
-            if (_state.value.connState == ConnState.Connected) {
+            if (_state.value.connState == ConnState.Connected && localUri == null) {
                 messageDao.bumpAttempts(local.id)
                 sendFrame(local)
             } else {
@@ -533,34 +544,46 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     fun sendMedia(uri: Uri) {
         val app = getApplication<Application>()
         val token = session.token ?: return
+        
+        val resolver = app.contentResolver
+        val mime = resolver.getType(uri) ?: "application/octet-stream"
+        var name = "file"
+        resolver.query(uri, null, null, null, null)?.use { cur ->
+            val idx = cur.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+            if (idx >= 0 && cur.moveToFirst()) name = cur.getString(idx) ?: name
+        }
+        val kind = when {
+            mime.startsWith("image/") -> "image"
+            mime.startsWith("video/") -> "video"
+            mime.startsWith("audio/") -> "audio"
+            else -> "file"
+        }
+
+        // Optimistic media ref without ID
+        val placeholder = MediaRef(kind = kind, mime = mime, name = name, size = 0)
+        
         _state.update { it.copy(uploadBusy = true) }
         viewModelScope.launch(Dispatchers.IO) {
-            try {
-                val resolver = app.contentResolver
-                val mime = resolver.getType(uri) ?: "application/octet-stream"
-                var name = "file"
-                resolver.query(uri, null, null, null, null)?.use { cur ->
-                    val idx = cur.getColumnIndex(OpenableColumns.DISPLAY_NAME)
-                    if (idx >= 0 && cur.moveToFirst()) name = cur.getString(idx) ?: name
-                }
-                val bytes = resolver.openInputStream(uri)?.use { it.readBytes() }
-                if (bytes == null || bytes.isEmpty()) {
-                    _state.update { it.copy(uploadBusy = false) }
-                    return@launch
-                }
-                val kind = when {
-                    mime.startsWith("image/") -> "image"
-                    mime.startsWith("video/") -> "video"
-                    mime.startsWith("audio/") -> "audio"
-                    else -> "file"
-                }
-                val r = MediaApi.upload(session.serverUrl, token, bytes, mime, name, kind)
+            if (_state.value.connState == ConnState.Connected) {
+                try {
+                    val bytes = resolver.openInputStream(uri)?.use { it.readBytes() }
+                    if (bytes != null) {
+                        val r = MediaApi.upload(session.serverUrl, token, bytes, mime, name, kind)
+                        if (r.media != null) {
+                            withContext(Dispatchers.Main) {
+                                _state.update { it.copy(uploadBusy = false) }
+                                enqueueAndSend(text = "", media = r.media)
+                            }
+                            return@launch
+                        }
+                    }
+                } catch (e: Exception) {}
+            }
+            
+            // Offline or upload failed: queue for background worker
+            withContext(Dispatchers.Main) {
                 _state.update { it.copy(uploadBusy = false) }
-                if (r.media != null) {
-                    enqueueAndSend(text = "", media = r.media)
-                }
-            } catch (e: Exception) {
-                _state.update { it.copy(uploadBusy = false) }
+                enqueueAndSend(text = "", media = placeholder, localUri = uri.toString())
             }
         }
     }
@@ -767,7 +790,8 @@ fun mediaRefToJson(m: MediaRef): JSONObject = JSONObject()
 fun jsonToMediaRef(s: String): MediaRef? = try {
     val o = JSONObject(s)
     MediaRef(
-        id = o.getString("id"), kind = o.optString("kind", "file"),
+        id = if (o.has("id")) o.getString("id") else "",
+        kind = o.optString("kind", "file"),
         mime = o.optString("mime", "application/octet-stream"),
         name = o.optString("name", "file"), size = o.optLong("size"),
         width = if (o.has("width")) o.optInt("width") else null,

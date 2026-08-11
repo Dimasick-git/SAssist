@@ -5,8 +5,10 @@ import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import dev.ryazha.sassist.crypto.E2ee
 import dev.ryazha.sassist.data.AppDatabase
+import android.net.Uri
 import dev.ryazha.sassist.data.Session
 import dev.ryazha.sassist.data.LocalMessage
+import dev.ryazha.sassist.net.MediaApi
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeoutOrNull
 import okhttp3.OkHttpClient
@@ -41,9 +43,35 @@ class SendQueueWorker(context: Context, params: WorkerParameters) : CoroutineWor
 
         val pending = dao.getPendingMessages()
         if (pending.isEmpty()) return Result.success()
-        val sendable = pending.filter { it.attempts < MAX_SEND_ATTEMPTS }
+        val sendable = pending.filter { it.attempts < MAX_SEND_ATTEMPTS }.toMutableList()
         for (m in pending) if (m.attempts >= MAX_SEND_ATTEMPTS) dao.markFailed(m.id)
         if (sendable.isEmpty()) return Result.success()
+
+        // 1. Upload missing media
+        for (i in sendable.indices) {
+            val m = sendable[i]
+            if (m.localMediaUri != null && m.mediaJson != null) {
+                val partial = try { JSONObject(m.mediaJson) } catch (e: Exception) { null }
+                if (partial != null && !partial.has("id")) {
+                    try {
+                        val bytes = applicationContext.contentResolver.openInputStream(Uri.parse(m.localMediaUri))?.use { it.readBytes() }
+                        if (bytes != null) {
+                            val r = MediaApi.upload(
+                                session.serverUrl, token, bytes,
+                                partial.optString("mime"), partial.optString("name"), partial.optString("kind")
+                            )
+                            if (r.media != null) {
+                                val updatedJson = JSONObject().put("id", r.media.id).put("kind", r.media.kind)
+                                    .put("mime", r.media.mime).put("name", r.media.name).put("size", r.media.size)
+                                val updated = m.copy(mediaJson = updatedJson.toString(), localMediaUri = null)
+                                dao.insert(updated)
+                                sendable[i] = updated
+                            }
+                        }
+                    } catch (e: Exception) { /* skip */ }
+                }
+            }
+        }
 
         if (url.startsWith("http")) url = url.replace("http://", "ws://").replace("https://", "wss://")
         if (!url.contains("://")) url = "wss://$url"
