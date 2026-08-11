@@ -15,7 +15,7 @@ class Session(context: Context) {
     companion object {
         // Free cloud backend target: deploy this repo to Koyeb's Free Instance
         // as app `sassist` under org `dimasick-git` to get this public URL.
-        const val DEFAULT_SERVER_URL = "https://8888-in77ivg3q0no3wgjae2xh-16573437.us1.manus.computer"
+        const val DEFAULT_SERVER_URL = "wss://sassist-dimasick-git.koyeb.app"
 
         // Local fallback for emulator development: run `docker compose up -d --build`.
         const val LOCAL_SERVER_URL = "ws://10.0.2.2:8080"
