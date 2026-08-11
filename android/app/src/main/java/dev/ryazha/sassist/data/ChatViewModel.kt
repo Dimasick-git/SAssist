@@ -462,8 +462,28 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
 
     fun send(text: String) {
         if (text.isBlank()) return
+        
+        // Intercept chat commands (e.g. /fib 10)
+        if (text.startsWith("/") && !text.startsWith("/\n```")) {
+            executeChatCommand(text.removePrefix("/"))
+            return
+        }
+
         enqueueAndSend(text = text, media = null)
         if (_state.value.codeMode) _state.update { it.copy(codeMode = false) }
+    }
+
+    private fun executeChatCommand(cmd: String) {
+        viewModelScope.launch(Dispatchers.Default) {
+            val host = ScriptHost(onSend = { send(it) }, lastMessageText = _state.value.messages.lastOrNull()?.text ?: "")
+            // Simple command parser: try to find a sample or just run as JS
+            val code = when {
+                cmd.startsWith("fib ") -> "sa.send('fib=' + (function f(n){return n<2?n:f(n-1)+f(n-2)})( " + cmd.removePrefix("fib ") + "));"
+                cmd == "help" -> "sa.log('Commands: /fib <n>, /help, or any JS code');"
+                else -> cmd // treat as raw JS
+            }
+            ScriptEngine.run(code, host)
+        }
     }
 
     private fun enqueueAndSend(text: String, media: MediaRef?) {

@@ -56,8 +56,10 @@ import kotlinx.coroutines.withContext
 private val SAMPLES = listOf(
     "greet" to "sa.send('Hello from a script! 🤖');",
     "echo last" to "sa.log('last msg: ' + sa.lastMessage());",
-    "fib" to "function fib(n){return n<2?n:fib(n-1)+fib(n-2)}\nsa.send('fib(10)=' + fib(10));",
-    "uptime ping" to "for(var i=0;i<3;i++) sa.log('ping ' + i); 'done';"
+    "Switch Release" to "var res = sa.fetch('https://api.github.com/repos/Atmosphere-NX/Atmosphere/releases/latest');\nvar json = JSON.parse(res);\nsa.log('Latest Atmosphere: ' + json.tag_name);\nsa.send('Latest Atmosphere: ' + json.html_url);",
+    "Title ID check" to "var id = '0100000000010000';\nif (sa.isTitleId(id)) sa.log(id + ' is a valid Switch Title ID');\nelse sa.log('Invalid ID');",
+    "Run Python" to "var res = sa.post('https://emccrp12.execute-api.us-east-1.amazonaws.com/piston/execute', JSON.stringify({\n  language: 'python',\n  version: '3.10.0',\n  files: [{ content: 'print(\"Hello from Python on Switch!\")' }]\n}));\nsa.log(JSON.parse(res).run.output);",
+    "fib" to "function fib(n){return n<2?n:fib(n-1)+fib(n-2)}\nsa.send('fib(10)=' + fib(10));"
 )
 
 @Composable
