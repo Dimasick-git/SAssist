@@ -9,4 +9,4 @@
 - [x] Keep the Ryazha author code separate from standard user functionality for explicit extra author features only.
 - [x] Fix the duplicate sendTyping declaration that blocked the Android release build.
 - [x] Test OTP login, profile endpoints, handle validation, chat, media and WebSocket reconnect behavior against the server.
-- [ ] Verify the Android release build and commit all completed changes under the repository owner's identity.
+- [x] Verify the Android release build and commit all completed changes under the repository owner's identity.
