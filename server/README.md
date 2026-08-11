@@ -33,13 +33,14 @@ code is returned to the app and shown on the code screen. Configure delivery
 | `HOST` | *(all interfaces)* | bind address. Set only if your host requires a specific IP (alwaysdata sets this automatically) |
 | `DATA_DIR` | `./data` (`/data` in Docker) | SQLite DB, media files, auth secret |
 | `AUTH_SECRET` | auto | token signing key. If unset, generated once and persisted to `DATA_DIR/auth_secret` — tokens survive restarts either way |
-| `PREMIUM_CODE` | *(off)* | set to enable Premium claims (`POST /premium/claim`). Unset = nobody can claim premium |
+| `PREMIUM_CODE` | *(off)* | legacy optional author-only marker; it does not gate normal SAssist functions |
 | `SMTP_HOST` `SMTP_PORT` `SMTP_USER` `SMTP_PASS` `SMTP_FROM` `SMTP_SECURE` | *(off)* | real e-mail OTP delivery |
 | `TWILIO_SID` `TWILIO_TOKEN` `TWILIO_FROM` | *(off)* | real SMS OTP delivery |
 | `DISABLE_DEV_CODE` | `0` | set `1` to refuse login when no delivery channel is configured (never return codes to clients) |
 
 Notes:
 - Configuring SMTP/Twilio **automatically disables** the returned `devCode`.
+- All valid `@username` lengths and all ordinary profile/chat capabilities are available to every user. The optional author code is reserved for future, explicitly author-only additions and must never be used to restrict ordinary functionality.
 - A configured-but-failing channel never falls back to `devCode`.
 - Legacy `users.json` (pre-SQLite) is imported automatically on first boot.
 - Backup = copy `DATA_DIR` (`sassist.db*`, `media/`, `auth_secret`).

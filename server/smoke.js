@@ -10,8 +10,10 @@ const PHASE = process.env.SMOKE_PHASE === "2" ? 2 : 1;
 const MARKER = process.env.SMOKE_MARKER || "persist-check-marker";
 const { WebSocket } = require("ws");
 
-async function post(path, body) {
-  const r = await fetch(BASE + path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+async function post(path, body, token) {
+  const headers = { "Content-Type": "application/json" };
+  if (token) headers.Authorization = "Bearer " + token;
+  const r = await fetch(BASE + path, { method: "POST", headers, body: JSON.stringify(body) });
   return { status: r.status, json: await r.json() };
 }
 
@@ -47,6 +49,19 @@ async function phase1() {
   const ok = await post("/auth/verify", { method: "email", identifier: "coder@example.com", code: req.json.devCode, username: "Coder" });
   if (!ok.json.ok || !ok.json.token) { console.log("FAIL: verify"); process.exit(1); }
   const token = ok.json.token;
+
+  // Profile: avatar survives a GET, and short valid @username remains open to all.
+  const avatar = "md_smoke_avatar";
+  const profile = await post("/profile", { displayName: "Coder", bio: "profile smoke", color: "5865F2", avatar }, token);
+  if (!profile.json.ok || profile.json.user.avatar !== avatar) { console.log("FAIL: profile avatar update"); fails++; }
+  const shortHandle = "bot";
+  const handle = await post("/handle/claim", { handle: shortHandle }, token);
+  if (!handle.json.ok || handle.json.user.handle !== shortHandle) { console.log("FAIL: short @username should be open to all"); fails++; }
+  const profileRead = await fetch(BASE + "/profile", { headers: { Authorization: "Bearer " + token } });
+  const profileReadJson = await profileRead.json();
+  if (!profileReadJson.ok || profileReadJson.user.avatar !== avatar || profileReadJson.user.handle !== shortHandle) {
+    console.log("FAIL: persisted profile response"); fails++;
+  }
 
   // WS: welcome -> send with clientId -> expect echo with clientId -> re-send same clientId -> expect echo, no dup
   const cid = "smoke-c1-" + Date.now().toString(36);

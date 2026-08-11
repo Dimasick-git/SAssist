@@ -10,11 +10,12 @@ export interface User {
   premium: boolean;
   color: string;
   bio: string;
+  avatar: string;
   createdAt: number;
 }
 
 export interface PublicUser {
-  id: string; displayName: string; handle: string; premium: boolean; color: string; bio?: string;
+  id: string; displayName: string; handle: string; premium: boolean; color: string; bio?: string; avatar?: string;
 }
 
 interface Otp { hash: string; salt: string; expires: number; tries: number; }
@@ -52,7 +53,7 @@ function safeEq(a: string, b: string): boolean {
 }
 
 export function toPublic(u: User): PublicUser {
-  return { id: u.id, displayName: u.displayName, handle: u.handle, premium: u.premium, color: u.color, bio: u.bio };
+  return { id: u.id, displayName: u.displayName, handle: u.handle, premium: u.premium, color: u.color, bio: u.bio, avatar: u.avatar };
 }
 
 export function genCode(): string { return "" + Math.floor(100000 + Math.random() * 900000); }
@@ -75,7 +76,7 @@ export function verifyOtp(identifier: string, code: string): boolean {
   return true;
 }
 
-// ---- handle (premium @username) rules, Telegram-like ----
+// ---- handle rules ----
 export function normalizeHandle(raw: string): string { return ("" + raw).trim().toLowerCase().replace(/^@/, ""); }
 
 export function handleStatus(raw: string): { valid: boolean; available: boolean; premiumOnly: boolean; reason?: string } {
@@ -83,9 +84,8 @@ export function handleStatus(raw: string): { valid: boolean; available: boolean;
   if (!/^[a-z][a-z0-9_]{2,19}$/.test(h)) {
     return { valid: false, available: false, premiumOnly: false, reason: "3-20 chars, start with a letter, only a-z 0-9 _" };
   }
-  const premiumOnly = h.length <= 4;          // short handles are premium-only
   const taken = handles.has(h);
-  return { valid: true, available: !taken, premiumOnly, reason: taken ? "already taken" : undefined };
+  return { valid: true, available: !taken, premiumOnly: false, reason: taken ? "already taken" : undefined };
 }
 
 export function login(method: string, identifier: string, displayName: string): User {
@@ -101,7 +101,7 @@ export function login(method: string, identifier: string, displayName: string): 
     displayName: displayName || ("user" + id.slice(2, 6)),
     handle: "", premium: false,
     color: COLORS[Math.floor(Math.random() * COLORS.length)],
-    bio: "", createdAt: Date.now()
+    bio: "", avatar: "", createdAt: Date.now()
   };
   users.set(id, user); persist(user); return user;
 }
@@ -114,18 +114,18 @@ export function claimHandle(userId: string, raw: string): { ok: boolean; error?:
   if (!st.valid) return { ok: false, error: st.reason };
   const owner = handles.get(h);
   if (owner && owner !== userId) return { ok: false, error: "username already taken" };
-  if (st.premiumOnly && !u.premium) return { ok: false, error: "short usernames are Premium-only" };
   if (u.handle) handles.delete(u.handle.toLowerCase());  // release old
   u.handle = h; handles.set(h, userId); persist(u);
   return { ok: true, user: u };
 }
 
-export function updateProfile(userId: string, patch: { displayName?: string; bio?: string; color?: string }): { ok: boolean; user?: User } {
+export function updateProfile(userId: string, patch: { displayName?: string; bio?: string; color?: string; avatar?: string }): { ok: boolean; user?: User } {
   const u = users.get(userId);
   if (!u) return { ok: false };
   if (typeof patch.displayName === "string" && patch.displayName.trim()) u.displayName = patch.displayName.trim().slice(0, 40);
   if (typeof patch.bio === "string") u.bio = patch.bio.slice(0, 200);
   if (typeof patch.color === "string" && /^[0-9A-Fa-f]{6}$/.test(patch.color)) u.color = patch.color.toUpperCase();
+  if (typeof patch.avatar === "string" && (/^md_[A-Za-z0-9_-]{3,120}$/.test(patch.avatar) || patch.avatar === "")) u.avatar = patch.avatar;
   persist(u); return { ok: true, user: u };
 }
 

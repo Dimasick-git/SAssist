@@ -109,10 +109,11 @@ class MainActivity : ComponentActivity() {
                         )
                         Stage.Profile -> ProfileScreen(
                             profile = state.profile,
+                            avatarUrl = { vm.mediaUrl(it) },
+                            onUploadAvatar = { vm.uploadAvatar(it) },
                             onSave = { n, b, c -> vm.saveProfile(n, b, c) },
                             onCheckHandle = { vm.checkHandle(it) },
                             onClaimHandle = { vm.claimHandle(it) },
-                            onClaimPremium = { vm.claimPremium(it) },
                             onLogout = { vm.logout() },
                             onBack = { vm.closeProfile() }
                         )

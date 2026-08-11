@@ -8,6 +8,7 @@ export interface PublicUser {
   premium: boolean;
   color: string;
   bio?: string;
+  avatar?: string;
 }
 
 export interface MediaRef {

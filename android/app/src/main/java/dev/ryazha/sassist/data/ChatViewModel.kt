@@ -49,6 +49,7 @@ data class ProfileUi(
     val premium: Boolean = false,
     val color: String = "5865F2",
     val bio: String = "",
+    val avatarId: String = "",
     val busy: Boolean = false,
     val error: String? = null,
     val notice: String? = null,
@@ -663,7 +664,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                 it.copy(profile = if (r.ok) ProfileUi(
                     displayName = r.displayName ?: it.username,
                     handle = r.handle ?: "", premium = r.premium,
-                    color = r.color ?: "5865F2", bio = r.bio ?: ""
+                    color = r.color ?: "5865F2", bio = r.bio ?: "", avatarId = r.avatarId ?: ""
                 ) else it.profile.copy(busy = false, error = r.error))
             }
         }
@@ -681,6 +682,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                         handle = r.handle ?: it.profile.handle,
                         premium = r.premium, color = r.color ?: it.profile.color,
                         bio = r.bio ?: it.profile.bio,
+                        avatarId = r.avatarId ?: it.profile.avatarId,
                         busy = false, error = null, notice = notice
                     )
                 )
@@ -693,6 +695,35 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         _state.update { it.copy(profile = it.profile.copy(busy = true, error = null, notice = null)) }
         viewModelScope.launch(Dispatchers.IO) {
             applyProfile(AuthApi.updateProfile(session.serverUrl, token, displayName, bio, color), "Profile saved")
+        }
+    }
+
+    fun uploadAvatar(uri: Uri) {
+        val token = session.token ?: return
+        val app = getApplication<Application>()
+        _state.update { it.copy(profile = it.profile.copy(busy = true, error = null, notice = null)) }
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val resolver = app.contentResolver
+                val mime = resolver.getType(uri) ?: "image/*"
+                if (!mime.startsWith("image/")) {
+                    _state.update { it.copy(profile = it.profile.copy(busy = false, error = "Choose an image file for your avatar.")) }
+                    return@launch
+                }
+                val bytes = resolver.openInputStream(uri)?.use { it.readBytes() }
+                if (bytes == null || bytes.isEmpty()) {
+                    _state.update { it.copy(profile = it.profile.copy(busy = false, error = "The selected image could not be read.")) }
+                    return@launch
+                }
+                val upload = MediaApi.upload(session.serverUrl, token, bytes, mime, "avatar_${System.currentTimeMillis()}", "image")
+                if (upload.media == null) {
+                    _state.update { it.copy(profile = it.profile.copy(busy = false, error = upload.error ?: "Avatar upload failed.")) }
+                    return@launch
+                }
+                applyProfile(AuthApi.updateProfile(session.serverUrl, token, null, null, null, upload.media.id), "Avatar updated")
+            } catch (e: Exception) {
+                _state.update { it.copy(profile = it.profile.copy(busy = false, error = "Avatar upload failed: ${e.message ?: "network error"}")) }
+            }
         }
     }
 

@@ -24,6 +24,7 @@ import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.InsertDriveFile
+import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Icon
@@ -47,6 +48,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -70,6 +72,10 @@ import dev.ryazha.sassist.ui.theme.TgAccent
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlinx.coroutines.launch
+import androidx.compose.runtime.rememberCoroutineScope
+import android.widget.Toast
+import dev.ryazha.sassist.net.MediaOpener
 
 private sealed interface Block {
     data class Plain(val text: String) : Block
@@ -154,7 +160,8 @@ fun MessageView(
     if (msg.text.isBlank() && msg.media == null && msg.replyTo == null) return
 
     val clipboard = LocalClipboardManager.current
-    val uriHandler = LocalUriHandler.current
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val time = remember(msg.ts) { SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(msg.ts)) }
     var menuOpen by remember { mutableStateOf(false) }
     var videoUrl by remember { mutableStateOf<String?>(null) }
@@ -167,6 +174,11 @@ fun MessageView(
         bottomStart = if (mine) 18.dp else 4.dp,
         bottomEnd = if (mine) 4.dp else 18.dp
     )
+    fun openExternalAttachment(url: String, name: String, mime: String) {
+        scope.launch {
+            MediaOpener.open(context, url, name, mime)?.let { Toast.makeText(context, it, Toast.LENGTH_SHORT).show() }
+        }
+    }
 
     Row(
         Modifier.fillMaxWidth()
@@ -215,7 +227,7 @@ fun MessageView(
                         model = url,
                         contentDescription = media.name,
                         modifier = Modifier.padding(top = 4.dp).widthIn(max = 280.dp).heightIn(max = 340.dp)
-                            .clip(RoundedCornerShape(12.dp)).clickable { uriHandler.openUri(url) }
+                            .clip(RoundedCornerShape(12.dp)).clickable { openExternalAttachment(url, media.name, media.mime) }
                     )
                     "audio" -> VoiceBubble(
                         mine = mine,
@@ -242,7 +254,7 @@ fun MessageView(
                     else -> Row(
                         Modifier.padding(top = 4.dp).clip(RoundedCornerShape(12.dp))
                             .background(if (mine) Color.White.copy(alpha = 0.14f) else BgInput)
-                            .clickable { uriHandler.openUri(url) }
+                            .clickable { openExternalAttachment(url, media.name, media.mime) }
                             .padding(horizontal = 10.dp, vertical = 9.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -253,7 +265,7 @@ fun MessageView(
                             Text(formatSize(media.size) + " · " + mediaKindLabel(media.kind) + " · tap to open/download", color = if (mine) TextPrimary.copy(alpha = 0.75f) else TextMuted, fontSize = 11.sp)
                         }
                         Spacer(Modifier.width(8.dp))
-                        Icon(Icons.Filled.Download, contentDescription = "Download", tint = TextMuted, modifier = Modifier.size(18.dp))
+                        Icon(Icons.Filled.OpenInNew, contentDescription = "Open with installed app", tint = TextMuted, modifier = Modifier.size(18.dp))
                     }
                 }
             }

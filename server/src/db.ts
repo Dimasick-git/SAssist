@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS users (
   premium INTEGER NOT NULL DEFAULT 0,
   color TEXT NOT NULL,
   bio TEXT NOT NULL DEFAULT '',
+  avatar TEXT NOT NULL DEFAULT '',
   createdAt INTEGER NOT NULL
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_users_handle ON users(handle) WHERE handle != '';
@@ -58,6 +59,12 @@ CREATE TABLE IF NOT EXISTS reads (
 CREATE INDEX IF NOT EXISTS idx_reads_msg ON reads(messageId);
 `);
 
+// Migrate SQLite files that were created before profile avatars existed.
+const userColumns = db.prepare("PRAGMA table_info(users)").all() as { name: string }[];
+if (!userColumns.some((column) => column.name === "avatar")) {
+  db.exec("ALTER TABLE users ADD COLUMN avatar TEXT NOT NULL DEFAULT ''");
+}
+
 // ---- auth secret: env wins, otherwise generate once and keep in DATA_DIR ----
 export function loadOrCreateSecret(): string {
   const env = process.env.AUTH_SECRET;
@@ -74,11 +81,11 @@ export function loadOrCreateSecret(): string {
 
 // ---- users ----
 const upsertUserStmt = db.prepare(`
-  INSERT INTO users (id, method, identifier, displayName, handle, premium, color, bio, createdAt)
-  VALUES (@id, @method, @identifier, @displayName, @handle, @premium, @color, @bio, @createdAt)
+  INSERT INTO users (id, method, identifier, displayName, handle, premium, color, bio, avatar, createdAt)
+  VALUES (@id, @method, @identifier, @displayName, @handle, @premium, @color, @bio, @avatar, @createdAt)
   ON CONFLICT(id) DO UPDATE SET
     displayName = excluded.displayName, handle = excluded.handle,
-    premium = excluded.premium, color = excluded.color, bio = excluded.bio
+    premium = excluded.premium, color = excluded.color, bio = excluded.bio, avatar = excluded.avatar
 `);
 
 export function upsertUser(u: User): void {
@@ -87,7 +94,7 @@ export function upsertUser(u: User): void {
 
 export function loadAllUsers(): User[] {
   const rows = db.prepare("SELECT * FROM users").all() as any[];
-  return rows.map((r) => ({ ...r, premium: !!r.premium }));
+  return rows.map((r) => ({ ...r, premium: !!r.premium, avatar: r.avatar || "" }));
 }
 
 // One-time migration from the old users.json store; renames the file so the
@@ -104,7 +111,7 @@ export function importUsersJsonIfPresent(): number {
         id: u.id, method: u.method || "email", identifier: u.identifier,
         displayName: u.displayName || u.username || ("user" + String(u.id).slice(2, 6)),
         handle: u.handle || "", premium: !!u.premium,
-        color: u.color || "5865F2", bio: u.bio || "",
+        color: u.color || "5865F2", bio: u.bio || "", avatar: u.avatar || "",
         createdAt: u.createdAt || Date.now(),
       });
       count++;
