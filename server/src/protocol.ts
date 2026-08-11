@@ -9,6 +9,7 @@ export interface PublicUser {
   color: string;
   bio?: string;
   avatar?: string;
+  banner?: string;
 }
 
 export interface MediaRef {

@@ -36,6 +36,32 @@ private val PROFILE_COLORS = listOf("5865F2", "229ED9", "23A55A", "F23F43", "FAA
 private fun profileColor(hex: String): Color = runCatching { Color(0xFF000000 or hex.toLong(16)) }.getOrDefault(Blurple)
 
 @Composable
+private fun ProfileBanner(imageUrl: String?, accent: Color, onClick: () -> Unit) {
+    Box(
+        Modifier.fillMaxWidth().height(118.dp).clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
+            .background(accent).clickable { onClick() }
+    ) {
+        if (!imageUrl.isNullOrBlank()) {
+            AsyncImage(
+                model = imageUrl,
+                contentDescription = "Profile banner",
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+        }
+        Surface(
+            modifier = Modifier.align(Alignment.TopEnd).padding(10.dp),
+            shape = RoundedCornerShape(8.dp), color = Color.Black.copy(alpha = 0.55f)
+        ) {
+            Row(Modifier.padding(horizontal = 8.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Filled.AddAPhoto, contentDescription = "Change banner", tint = Color.White, modifier = Modifier.size(14.dp))
+                Text("  Edit banner", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+            }
+        }
+    }
+}
+
+@Composable
 private fun ProfileAvatar(
     name: String,
     avatarUrl: String?,
@@ -80,6 +106,7 @@ fun ProfileScreen(
     profile: ProfileUi,
     avatarUrl: (String) -> String,
     onUploadAvatar: (Uri) -> Unit,
+    onUploadBanner: (Uri) -> Unit,
     onSave: (displayName: String, bio: String, color: String) -> Unit,
     onCheckHandle: (String) -> Unit,
     onClaimHandle: (String) -> Unit,
@@ -90,9 +117,11 @@ fun ProfileScreen(
     var bio by remember(profile.bio) { mutableStateOf(profile.bio) }
     var color by remember(profile.color) { mutableStateOf(profile.color) }
     var handle by remember(profile.handle) { mutableStateOf(profile.handle) }
-    val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri -> uri?.let(onUploadAvatar) }
+    val avatarPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri -> uri?.let(onUploadAvatar) }
+    val bannerPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri -> uri?.let(onUploadBanner) }
     val accent = profileColor(color)
     val avatar = profile.avatarId.takeIf { it.isNotBlank() }?.let(avatarUrl)
+    val banner = profile.bannerId.takeIf { it.isNotBlank() }?.let(avatarUrl)
     val textFieldColors = TextFieldDefaults.colors(
         focusedContainerColor = BgInput, unfocusedContainerColor = BgInput,
         focusedTextColor = TextPrimary, unfocusedTextColor = TextPrimary,
@@ -123,12 +152,12 @@ fun ProfileScreen(
                 colors = CardDefaults.cardColors(containerColor = BgPanel)
             ) {
                 Box(Modifier.fillMaxWidth()) {
-                    Box(Modifier.fillMaxWidth().height(118.dp).background(accent))
+                    ProfileBanner(banner, accent) { bannerPicker.launch("image/*") }
                     ProfileAvatar(
                         name = profile.displayName.ifBlank { name }, avatarUrl = avatar, color = accent,
                         modifier = Modifier.padding(start = 18.dp, top = 72.dp).size(92.dp)
                             .border(5.dp, BgPanel, CircleShape),
-                        onClick = { picker.launch("image/*") }
+                        onClick = { avatarPicker.launch("image/*") }
                     )
                     Column(Modifier.fillMaxWidth().padding(start = 18.dp, end = 18.dp, top = 176.dp, bottom = 18.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {

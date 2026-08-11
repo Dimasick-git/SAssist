@@ -111,6 +111,7 @@ class MainActivity : ComponentActivity() {
                             profile = state.profile,
                             avatarUrl = { vm.mediaUrl(it) },
                             onUploadAvatar = { vm.uploadAvatar(it) },
+                            onUploadBanner = { vm.uploadBanner(it) },
                             onSave = { n, b, c -> vm.saveProfile(n, b, c) },
                             onCheckHandle = { vm.checkHandle(it) },
                             onClaimHandle = { vm.claimHandle(it) },

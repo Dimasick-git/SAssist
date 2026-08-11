@@ -52,14 +52,15 @@ async function phase1() {
 
   // Profile: avatar survives a GET, and short valid @username remains open to all.
   const avatar = "md_smoke_avatar";
-  const profile = await post("/profile", { displayName: "Coder", bio: "profile smoke", color: "5865F2", avatar }, token);
-  if (!profile.json.ok || profile.json.user.avatar !== avatar) { console.log("FAIL: profile avatar update"); fails++; }
+  const banner = "md_smoke_banner";
+  const profile = await post("/profile", { displayName: "Coder", bio: "profile smoke", color: "5865F2", avatar, banner }, token);
+  if (!profile.json.ok || profile.json.user.avatar !== avatar || profile.json.user.banner !== banner) { console.log("FAIL: profile media update"); fails++; }
   const shortHandle = "bot";
   const handle = await post("/handle/claim", { handle: shortHandle }, token);
   if (!handle.json.ok || handle.json.user.handle !== shortHandle) { console.log("FAIL: short @username should be open to all"); fails++; }
   const profileRead = await fetch(BASE + "/profile", { headers: { Authorization: "Bearer " + token } });
   const profileReadJson = await profileRead.json();
-  if (!profileReadJson.ok || profileReadJson.user.avatar !== avatar || profileReadJson.user.handle !== shortHandle) {
+  if (!profileReadJson.ok || profileReadJson.user.avatar !== avatar || profileReadJson.user.banner !== banner || profileReadJson.user.handle !== shortHandle) {
     console.log("FAIL: persisted profile response"); fails++;
   }
 

@@ -11,11 +11,12 @@ export interface User {
   color: string;
   bio: string;
   avatar: string;
+  banner: string;
   createdAt: number;
 }
 
 export interface PublicUser {
-  id: string; displayName: string; handle: string; premium: boolean; color: string; bio?: string; avatar?: string;
+  id: string; displayName: string; handle: string; premium: boolean; color: string; bio?: string; avatar?: string; banner?: string;
 }
 
 interface Otp { hash: string; salt: string; expires: number; tries: number; }
@@ -53,7 +54,7 @@ function safeEq(a: string, b: string): boolean {
 }
 
 export function toPublic(u: User): PublicUser {
-  return { id: u.id, displayName: u.displayName, handle: u.handle, premium: u.premium, color: u.color, bio: u.bio, avatar: u.avatar };
+  return { id: u.id, displayName: u.displayName, handle: u.handle, premium: u.premium, color: u.color, bio: u.bio, avatar: u.avatar, banner: u.banner };
 }
 
 export function genCode(): string { return "" + Math.floor(100000 + Math.random() * 900000); }
@@ -101,7 +102,7 @@ export function login(method: string, identifier: string, displayName: string): 
     displayName: displayName || ("user" + id.slice(2, 6)),
     handle: "", premium: false,
     color: COLORS[Math.floor(Math.random() * COLORS.length)],
-    bio: "", avatar: "", createdAt: Date.now()
+    bio: "", avatar: "", banner: "", createdAt: Date.now()
   };
   users.set(id, user); persist(user); return user;
 }
@@ -119,13 +120,14 @@ export function claimHandle(userId: string, raw: string): { ok: boolean; error?:
   return { ok: true, user: u };
 }
 
-export function updateProfile(userId: string, patch: { displayName?: string; bio?: string; color?: string; avatar?: string }): { ok: boolean; user?: User } {
+export function updateProfile(userId: string, patch: { displayName?: string; bio?: string; color?: string; avatar?: string; banner?: string }): { ok: boolean; user?: User } {
   const u = users.get(userId);
   if (!u) return { ok: false };
   if (typeof patch.displayName === "string" && patch.displayName.trim()) u.displayName = patch.displayName.trim().slice(0, 40);
   if (typeof patch.bio === "string") u.bio = patch.bio.slice(0, 200);
   if (typeof patch.color === "string" && /^[0-9A-Fa-f]{6}$/.test(patch.color)) u.color = patch.color.toUpperCase();
   if (typeof patch.avatar === "string" && (/^md_[A-Za-z0-9_-]{3,120}$/.test(patch.avatar) || patch.avatar === "")) u.avatar = patch.avatar;
+  if (typeof patch.banner === "string" && (/^md_[A-Za-z0-9_-]{3,120}$/.test(patch.banner) || patch.banner === "")) u.banner = patch.banner;
   persist(u); return { ok: true, user: u };
 }
 

@@ -141,7 +141,7 @@ const server = http.createServer(async (req, res) => {
     const b = await readBody(req);
     const u = userForToken(tokenFrom(req, b));
     if (!u) { sendJson(res, 401, { ok: false, error: "auth required" }); return; }
-    const r = updateProfile(u.id, { displayName: b.displayName, bio: b.bio, color: b.color, avatar: b.avatar });
+    const r = updateProfile(u.id, { displayName: b.displayName, bio: b.bio, color: b.color, avatar: b.avatar, banner: b.banner });
     sendJson(res, 200, { ok: true, user: toPublic(r.user!) });
     return;
   }

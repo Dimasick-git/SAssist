@@ -50,6 +50,7 @@ data class ProfileUi(
     val color: String = "5865F2",
     val bio: String = "",
     val avatarId: String = "",
+    val bannerId: String = "",
     val busy: Boolean = false,
     val error: String? = null,
     val notice: String? = null,
@@ -659,7 +660,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                 it.copy(profile = if (r.ok) ProfileUi(
                     displayName = r.displayName ?: it.username,
                     handle = r.handle ?: "", premium = r.premium,
-                    color = r.color ?: "5865F2", bio = r.bio ?: "", avatarId = r.avatarId ?: ""
+                    color = r.color ?: "5865F2", bio = r.bio ?: "", avatarId = r.avatarId ?: "", bannerId = r.bannerId ?: ""
                 ) else it.profile.copy(busy = false, error = r.error))
             }
         }
@@ -678,6 +679,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                         premium = r.premium, color = r.color ?: it.profile.color,
                         bio = r.bio ?: it.profile.bio,
                         avatarId = r.avatarId ?: it.profile.avatarId,
+                        bannerId = r.bannerId ?: it.profile.bannerId,
                         busy = false, error = null, notice = notice
                     )
                 )
@@ -693,7 +695,11 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun uploadAvatar(uri: Uri) {
+    fun uploadAvatar(uri: Uri) = uploadProfileImage(uri, "avatar")
+
+    fun uploadBanner(uri: Uri) = uploadProfileImage(uri, "banner")
+
+    private fun uploadProfileImage(uri: Uri, slot: String) {
         val token = session.token ?: return
         val app = getApplication<Application>()
         _state.update { it.copy(profile = it.profile.copy(busy = true, error = null, notice = null)) }
@@ -702,7 +708,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                 val resolver = app.contentResolver
                 val mime = resolver.getType(uri) ?: "image/*"
                 if (!mime.startsWith("image/")) {
-                    _state.update { it.copy(profile = it.profile.copy(busy = false, error = "Choose an image file for your avatar.")) }
+                    _state.update { it.copy(profile = it.profile.copy(busy = false, error = "Choose an image file for your $slot.")) }
                     return@launch
                 }
                 val bytes = resolver.openInputStream(uri)?.use { it.readBytes() }
@@ -710,14 +716,29 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                     _state.update { it.copy(profile = it.profile.copy(busy = false, error = "The selected image could not be read.")) }
                     return@launch
                 }
-                val upload = MediaApi.upload(session.serverUrl, token, bytes, mime, "avatar_${System.currentTimeMillis()}", "image")
+                val upload = MediaApi.upload(session.serverUrl, token, bytes, mime, "${slot}_${System.currentTimeMillis()}", "image")
                 if (upload.media == null) {
-                    _state.update { it.copy(profile = it.profile.copy(busy = false, error = upload.error ?: "Avatar upload failed.")) }
+                    _state.update { it.copy(profile = it.profile.copy(busy = false, error = upload.error ?: "$slot upload failed.")) }
                     return@launch
                 }
-                applyProfile(AuthApi.updateProfile(session.serverUrl, token, null, null, null, upload.media.id), "Avatar updated")
+                val updated = if (slot == "avatar") {
+                    AuthApi.updateProfile(session.serverUrl, token, null, null, null, avatarId = upload.media.id)
+                } else {
+                    AuthApi.updateProfile(session.serverUrl, token, null, null, null, bannerId = upload.media.id)
+                }
+                val persistedId = if (slot == "avatar") updated.avatarId else updated.bannerId
+                if (!updated.ok || persistedId != upload.media.id) {
+                    _state.update {
+                        it.copy(profile = it.profile.copy(
+                            busy = false,
+                            error = updated.error ?: "The server accepted the upload but did not save this $slot. Update the backend and try again."
+                        ))
+                    }
+                    return@launch
+                }
+                applyProfile(updated, "${slot.replaceFirstChar { c -> c.uppercase() }} updated")
             } catch (e: Exception) {
-                _state.update { it.copy(profile = it.profile.copy(busy = false, error = "Avatar upload failed: ${e.message ?: "network error"}")) }
+                _state.update { it.copy(profile = it.profile.copy(busy = false, error = "$slot upload failed: ${e.message ?: "network error"}")) }
             }
         }
     }

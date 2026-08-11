@@ -22,7 +22,7 @@ object AuthApi {
         val ok: Boolean, val error: String?,
         val displayName: String? = null, val handle: String? = null,
         val premium: Boolean = false, val color: String? = null, val bio: String? = null,
-        val avatarId: String? = null
+        val avatarId: String? = null, val bannerId: String? = null
     )
     data class HandleStatus(val valid: Boolean, val available: Boolean, val premiumOnly: Boolean, val reason: String?)
 
@@ -104,7 +104,8 @@ object AuthApi {
             premium = u?.optBoolean("premium") ?: false,
             color = u?.optString("color"),
             bio = u?.optString("bio"),
-            avatarId = u?.optString("avatar")?.takeIf { it.isNotBlank() }
+            avatarId = u?.optString("avatar")?.takeIf { it.isNotBlank() },
+            bannerId = u?.optString("banner")?.takeIf { it.isNotBlank() }
         )
     }
 
@@ -136,12 +137,13 @@ object AuthApi {
         }
     }
 
-    fun updateProfile(serverUrl: String, token: String, displayName: String?, bio: String?, color: String?, avatarId: String? = null): ProfileResult {
+    fun updateProfile(serverUrl: String, token: String, displayName: String?, bio: String?, color: String?, avatarId: String? = null, bannerId: String? = null): ProfileResult {
         val b = JSONObject()
         displayName?.let { b.put("displayName", it) }
         bio?.let { b.put("bio", it) }
         color?.let { b.put("color", it) }
         avatarId?.let { b.put("avatar", it) }
+        bannerId?.let { b.put("banner", it) }
         return postAuthed(serverUrl, "/profile", token, b)
     }
 
