@@ -85,6 +85,19 @@ async function main() {
     a.ws.send(JSON.stringify({ type: "send", channel, text: encryptedText, clientId: `dm-${tag}` }));
     await gotMessage;
 
+    const encryptedOffer = "v1:call-offer-ciphertext";
+    const gotOffer = b.waitFor((event) => event.type === "callSignal" && event.channel === channel && event.payload === encryptedOffer);
+    a.ws.send(JSON.stringify({ type: "callSignal", channel, payload: encryptedOffer }));
+    await gotOffer;
+
+    const gotCallEnd = b.waitFor((event) => event.type === "callEnd" && event.channel === channel);
+    a.ws.send(JSON.stringify({ type: "callEnd", channel }));
+    await gotCallEnd;
+
+    const forbiddenCall = m.waitFor((event) => event.type === "error" && event.reason === "private call channel required");
+    m.ws.send(JSON.stringify({ type: "callSignal", channel, payload: encryptedOffer }));
+    await forbiddenCall;
+
     const forbidden = m.waitFor((event) => event.type === "error" && event.reason === "no such channel");
     m.ws.send(JSON.stringify({ type: "switchChannel", channel }));
     await forbidden;
