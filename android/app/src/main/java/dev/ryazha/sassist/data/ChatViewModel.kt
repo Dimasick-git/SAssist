@@ -27,6 +27,7 @@ import dev.ryazha.sassist.net.ChatClient
 import dev.ryazha.sassist.net.ConnectivityObserver
 import dev.ryazha.sassist.net.MediaApi
 import dev.ryazha.sassist.net.MediaOpener
+import dev.ryazha.sassist.net.MediaPreprocessor
 import dev.ryazha.sassist.nearby.NearbyMessenger
 import dev.ryazha.sassist.nearby.NearbyPeer
 import dev.ryazha.sassist.nearby.NearbyTransfer
@@ -108,6 +109,7 @@ data class ChatState(
     val returnStage: Stage = Stage.Chats,
     val replyingTo: ChatMessage? = null,
     val uploadBusy: Boolean = false,
+    val uploadProgress: Int? = null,
     val profile: ProfileUi = ProfileUi(),
     val viewedProfile: PublicProfileUi = PublicProfileUi(),
     val customKeyChannels: Set<String> = emptySet(),
@@ -750,9 +752,12 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         val resolver = app.contentResolver
         val mime = resolver.getType(uri) ?: "application/octet-stream"
         var name = "file"
+        var size = -1L
         resolver.query(uri, null, null, null, null)?.use { cur ->
             val idx = cur.getColumnIndex(OpenableColumns.DISPLAY_NAME)
             if (idx >= 0 && cur.moveToFirst()) name = cur.getString(idx) ?: name
+            val sizeIdx = cur.getColumnIndex(OpenableColumns.SIZE)
+            if (sizeIdx >= 0 && cur.moveToFirst() && !cur.isNull(sizeIdx)) size = cur.getLong(sizeIdx)
         }
         val kind = when {
             mime.startsWith("image/") -> "image"
@@ -764,27 +769,40 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         // Optimistic media ref without ID
         val placeholder = MediaRef(kind = kind, mime = mime, name = name, size = 0)
         
-        _state.update { it.copy(uploadBusy = true) }
+        _state.update { it.copy(uploadBusy = true, uploadProgress = 0) }
         viewModelScope.launch(Dispatchers.IO) {
             if (_state.value.connState == ConnState.Connected) {
                 try {
-                    val bytes = resolver.openInputStream(uri)?.use { it.readBytes() }
-                    if (bytes != null) {
-                        val r = MediaApi.upload(session.serverUrl, token, bytes, mime, name, kind)
-                        if (r.media != null) {
-                            withContext(Dispatchers.Main) {
-                                _state.update { it.copy(uploadBusy = false) }
-                                enqueueAndSend(text = "", media = r.media)
-                            }
-                            return@launch
+                    val optimized = if (kind == "image") MediaPreprocessor.optimizePhoto(resolver, uri, mime, name) else null
+                    val r = if (optimized != null) {
+                        MediaApi.upload(session.serverUrl, token, optimized.bytes, optimized.mime, optimized.name, kind) { progress ->
+                            _state.update { it.copy(uploadProgress = progress) }
                         }
+                    } else if (size > 0) {
+                        MediaApi.uploadStream(
+                            session.serverUrl, token, { resolver.openInputStream(uri) }, size, mime, name, kind,
+                            onProgress = { progress -> _state.update { it.copy(uploadProgress = progress) } }
+                        )
+                    } else {
+                        val bytes = resolver.openInputStream(uri)?.use { it.readBytes() }
+                        if (bytes == null) MediaApi.UploadResult(null, "cannot open media")
+                        else MediaApi.upload(session.serverUrl, token, bytes, mime, name, kind) { progress ->
+                            _state.update { it.copy(uploadProgress = progress) }
+                        }
+                    }
+                    if (r.media != null) {
+                        withContext(Dispatchers.Main) {
+                            _state.update { it.copy(uploadBusy = false, uploadProgress = null) }
+                            enqueueAndSend(text = "", media = r.media)
+                        }
+                        return@launch
                     }
                 } catch (e: Exception) {}
             }
             
             // Offline or upload failed: queue for background worker
             withContext(Dispatchers.Main) {
-                _state.update { it.copy(uploadBusy = false) }
+                _state.update { it.copy(uploadBusy = false, uploadProgress = null) }
                 enqueueAndSend(text = "", media = placeholder, localUri = uri.toString())
             }
         }

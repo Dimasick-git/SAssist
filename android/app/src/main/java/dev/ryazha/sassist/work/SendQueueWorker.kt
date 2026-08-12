@@ -55,19 +55,24 @@ class SendQueueWorker(context: Context, params: WorkerParameters) : CoroutineWor
                 val partial = try { JSONObject(m.mediaJson) } catch (e: Exception) { null }
                 if (partial != null && !partial.has("id")) {
                     try {
-                        val bytes = applicationContext.contentResolver.openInputStream(Uri.parse(m.localMediaUri))?.use { it.readBytes() }
-                        if (bytes != null) {
-                            val r = MediaApi.upload(
-                                session.serverUrl, token, bytes,
+                        val uri = Uri.parse(m.localMediaUri)
+                        val size = applicationContext.contentResolver.openAssetFileDescriptor(uri, "r")?.use { it.length } ?: -1L
+                        val r = if (size > 0) {
+                            MediaApi.uploadStream(
+                                session.serverUrl, token, { applicationContext.contentResolver.openInputStream(uri) }, size,
                                 partial.optString("mime"), partial.optString("name"), partial.optString("kind")
                             )
-                            if (r.media != null) {
-                                val updatedJson = JSONObject().put("id", r.media.id).put("kind", r.media.kind)
-                                    .put("mime", r.media.mime).put("name", r.media.name).put("size", r.media.size)
-                                val updated = m.copy(mediaJson = updatedJson.toString(), localMediaUri = null)
-                                dao.insert(updated)
-                                sendable[i] = updated
-                            }
+                        } else {
+                            val bytes = applicationContext.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                            if (bytes == null) MediaApi.UploadResult(null, "cannot open media")
+                            else MediaApi.upload(session.serverUrl, token, bytes, partial.optString("mime"), partial.optString("name"), partial.optString("kind"))
+                        }
+                        if (r.media != null) {
+                            val updatedJson = JSONObject().put("id", r.media.id).put("kind", r.media.kind)
+                                .put("mime", r.media.mime).put("name", r.media.name).put("size", r.media.size)
+                            val updated = m.copy(mediaJson = updatedJson.toString(), localMediaUri = null)
+                            dao.insert(updated)
+                            sendable[i] = updated
                         }
                     } catch (e: Exception) { /* skip */ }
                 }

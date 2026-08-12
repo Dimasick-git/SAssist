@@ -104,6 +104,7 @@ class MainActivity : ComponentActivity() {
                             codeMode = state.codeMode, e2ee = state.e2ee,
                             connState = state.connState, myUserId = state.userId,
                             replyingTo = state.replyingTo, uploadBusy = state.uploadBusy,
+                            uploadProgress = state.uploadProgress,
                             hasCustomKey = state.customKeyChannels.contains(state.currentChannel),
                             recording = state.recording, recordingStartedAt = state.recordingStartedAt,
                             voiceState = voiceState,

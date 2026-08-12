@@ -77,6 +77,7 @@ fun ChatScreen(
     myUserId: String,
     replyingTo: ChatMessage?,
     uploadBusy: Boolean,
+    uploadProgress: Int?,
     hasCustomKey: Boolean,
     recording: Boolean,
     recordingStartedAt: Long,
@@ -291,7 +292,10 @@ fun ChatScreen(
                 },
                 enabled = !uploadBusy
             ) {
-                if (uploadBusy) CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp, color = TgAccent)
+                if (uploadBusy) {
+                    CircularProgressIndicator(progress = { (uploadProgress ?: 0) / 100f }, modifier = Modifier.size(18.dp), strokeWidth = 2.dp, color = TgAccent)
+                    uploadProgress?.let { Text("$it%", color = TextMuted, fontSize = 10.sp) }
+                }
                 else Icon(Icons.Filled.AddPhotoAlternate, contentDescription = tr("Прикрепить фото или видео", "Attach photo/video"), tint = TextMuted)
             }
             IconButton(onClick = { pickFile.launch("*/*") }, enabled = !uploadBusy) {

@@ -66,6 +66,31 @@ function readBody(req: http.IncomingMessage, cap = 1e6): Promise<any> {
     req.on("end", () => { try { resolve(JSON.parse(data || "{}")); } catch (e) { resolve({}); } });
   });
 }
+/** Write upload bytes directly to disk instead of buffering a base64 JSON body. */
+function writeRawBody(req: http.IncomingMessage, target: string, cap: number): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const out = fs.createWriteStream(target, { flags: "w" });
+    let size = 0; let settled = false; let tooLarge = false;
+    const finish = (error?: Error) => {
+      if (settled) return;
+      settled = true;
+      if (error) { try { out.destroy(); fs.unlinkSync(target); } catch (_) {} reject(error); }
+      else resolve(size);
+    };
+    req.on("data", (chunk: Buffer) => {
+      size += chunk.length;
+      if (size > cap) { tooLarge = true; return; }
+      if (!out.write(chunk)) req.pause();
+    });
+    out.on("drain", () => req.resume());
+    req.on("error", () => finish(new Error("upload interrupted")));
+    out.on("error", () => finish(new Error("cannot save upload")));
+    req.on("end", () => {
+      if (tooLarge) { finish(new Error("file too large")); return; }
+      out.end(() => finish());
+    });
+  });
+}
 function secHeaders(res: http.ServerResponse) {
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("X-Frame-Options", "DENY");
@@ -171,6 +196,33 @@ const server = http.createServer(async (req, res) => {
   }
 
   // ---- media upload / download (photos, videos, files) ----
+  if (req.method === "POST" && url === "/upload/raw") {
+    const u = userForToken(tokenFrom(req, {}));
+    if (!u) { sendJson(res, 401, { ok: false, error: "auth required" }); return; }
+    const declared = Number(req.headers["content-length"] || 0);
+    if (declared > MEDIA_MAX) { sendJson(res, 413, { ok: false, error: "file too large (max 30MB)" }); return; }
+    const query = new URL(req.url || "/upload/raw", "http://localhost").searchParams;
+    const requestedKind = query.get("kind") || "";
+    const kind: MediaRef["kind"] = requestedKind === "video" ? "video" : requestedKind === "audio" ? "audio" : requestedKind === "file" ? "file" : "image";
+    const mime = (query.get("mime") || "application/octet-stream").slice(0, 100);
+    const name = (query.get("name") || "file").slice(0, 120);
+    const durationRaw = Number(query.get("durationMs"));
+    const durationMs = durationRaw > 0 ? durationRaw : undefined;
+    const id = newId("md");
+    const temp = path.join(MEDIA_DIR, id + ".uploading");
+    try {
+      const size = await writeRawBody(req, temp, MEDIA_MAX);
+      if (!size) { try { fs.unlinkSync(temp); } catch (_) {} sendJson(res, 400, { ok: false, error: "no data" }); return; }
+      fs.renameSync(temp, path.join(MEDIA_DIR, id + ".bin"));
+      fs.writeFileSync(path.join(MEDIA_DIR, id + ".json"), JSON.stringify({ id, kind, mime, name, size, owner: u.id, ts: Date.now() }));
+      const media: MediaRef = { id, kind, mime, name, size, durationMs };
+      sendJson(res, 200, { ok: true, media, url: "/media/" + id });
+    } catch (e: any) {
+      const error = e?.message === "file too large" ? "file too large (max 30MB)" : "upload failed";
+      sendJson(res, error.startsWith("file too large") ? 413 : 400, { ok: false, error });
+    }
+    return;
+  }
   if (req.method === "POST" && url === "/upload") {
     const b = await readBody(req, MEDIA_MAX + 2 * 1024 * 1024);
     const u = userForToken(tokenFrom(req, b));
@@ -197,9 +249,26 @@ const server = http.createServer(async (req, res) => {
     const binPath = path.join(MEDIA_DIR, id + ".bin");
     if (!fs.existsSync(metaPath) || !fs.existsSync(binPath)) { secHeaders(res); res.writeHead(404); res.end(); return; }
     const meta = JSON.parse(fs.readFileSync(metaPath, "utf8"));
+    const size = Number(meta.size) || fs.statSync(binPath).size;
+    const range = req.headers.range;
     secHeaders(res);
-    res.writeHead(200, { "Content-Type": meta.mime || "application/octet-stream", "Content-Length": meta.size, "Cache-Control": "public, max-age=31536000" });
-    fs.createReadStream(binPath).pipe(res);
+    res.setHeader("Content-Type", meta.mime || "application/octet-stream");
+    res.setHeader("Accept-Ranges", "bytes");
+    res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+    if (range) {
+      const match = /^bytes=(\d*)-(\d*)$/.exec(range);
+      if (!match) { res.writeHead(416, { "Content-Range": `bytes */${size}` }); res.end(); return; }
+      const start = match[1] ? Number(match[1]) : 0;
+      const end = match[2] ? Math.min(Number(match[2]), size - 1) : size - 1;
+      if (!Number.isFinite(start) || !Number.isFinite(end) || start > end || start >= size) {
+        res.writeHead(416, { "Content-Range": `bytes */${size}` }); res.end(); return;
+      }
+      res.writeHead(206, { "Content-Length": end - start + 1, "Content-Range": `bytes ${start}-${end}/${size}` });
+      fs.createReadStream(binPath, { start, end }).pipe(res);
+    } else {
+      res.writeHead(200, { "Content-Length": size });
+      fs.createReadStream(binPath).pipe(res);
+    }
     return;
   }
 
