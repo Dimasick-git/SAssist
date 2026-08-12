@@ -54,9 +54,59 @@ function sendChannelList(userId: string) {
   const payload: ServerMsg = { type: "channels", channels: availableChannels(userId) };
   for (const c of clients.values()) if (c.id === userId) send(c.ws, payload);
 }
-function broadcastChannel(channel: string, msg: ServerMsg, exceptWs?: WebSocket) {
-  for (const c of clients.values()) if (c.channel === channel && c.ws !== exceptWs) send(c.ws, msg);
-}
+function notifyPushForMessage(channel: string, senderId: string, senderName: string, text: string) {
+	  try {
+	    let targetUserIds: string[] = [];
+	    if (channel.startsWith("dm:")) {
+	      const direct = db.getDirectChannel(channel);
+	      if (direct) {
+		targetUserIds = [direct.memberA, direct.memberB].filter((id) => id !== senderId);
+	      }
+	    } else {
+	      // Public channel: notify online or active users except sender, or all channel participants if any
+	      const activeInChannel = new Set<string>();
+	      for (const c of clients.values()) {
+		if (c.channel === channel && c.id !== senderId) activeInChannel.add(c.id);
+	      }
+	      targetUserIds = [...activeInChannel];
+	    }
+	    if (targetUserIds.length === 0) return;
+	    const tokens = db.getDeviceTokensForUsers(targetUserIds);
+	    if (tokens.length === 0) return;
+
+	    // Send lightweight FCM notification if FCM server key or service account is configured
+	    const fcmKey = process.env.FCM_SERVER_KEY;
+	    if (!fcmKey) return;
+
+	    const payload = {
+	      registration_ids: tokens,
+	      notification: {
+		title: channel.startsWith("dm:") ? `${senderName} (DM)` : `#${channel} · ${senderName}`,
+		body: text.length > 120 ? text.substring(0, 120) + "…" : (text || "Attachment"),
+		sound: "default"
+	      },
+	      data: {
+		channel: channel,
+		senderId: senderId
+	      }
+	    };
+
+	    fetch("https://fcm.googleapis.com/fcm/send", {
+	      method: "POST",
+	      headers: {
+		"Content-Type": "application/json",
+		"Authorization": `key=${fcmKey}`
+	      },
+	      body: JSON.stringify(payload)
+	    }).catch(() => {});
+	  } catch (e) {
+	    // ignore push delivery errors
+	  }
+	}
+
+	function broadcastChannel(channel: string, msg: ServerMsg, exceptWs?: WebSocket) {
+	  for (const c of clients.values()) if (c.channel === channel && c.ws !== exceptWs) send(c.ws, msg);
+	}
 function broadcastPresence(channel: string) { broadcastChannel(channel, { type: "presence", channel, users: usersIn(channel) }); }
 
 function readBody(req: http.IncomingMessage, cap = 1e6): Promise<any> {
@@ -129,6 +179,27 @@ const server = http.createServer(async (req, res) => {
     sendJson(res, 200, { ok: true, delivered: r.delivered, devCode: r.devCode });
     return;
   }
+  if (req.method === "POST" && url === "/api/push/token") {
+	  const authHeader = req.headers["authorization"] || "";
+	  const tokenPart = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
+	  const uToken = userForToken(tokenPart);
+	  if (!uToken) {
+		res.writeHead(401, { "Content-Type": "application/json" });
+		res.end(JSON.stringify({ ok: false, error: "Unauthorized" }));
+		return;
+	  }
+	  const body = await readBody(req);
+	  if (body && typeof body.token === "string" && body.token.trim()) {
+		db.saveDeviceToken(uToken.id, body.token.trim());
+		res.writeHead(200, { "Content-Type": "application/json" });
+		res.end(JSON.stringify({ ok: true }));
+		return;
+	  }
+	  res.writeHead(400, { "Content-Type": "application/json" });
+	  res.end(JSON.stringify({ ok: false, error: "Invalid token" }));
+	  return;
+	}
+
   if (req.method === "POST" && url === "/auth/verify") {
     const b = await readBody(req);
     const method = b.method === "phone" ? "phone" : "email";
@@ -413,6 +484,7 @@ wss.on("connection", (ws) => {
           const own = c.id === message.userId;
           send(c.ws, { type: "message", message: own && clientId ? { ...message, clientId } : message });
         }
+        notifyPushForMessage(channel, pub.id, pub.displayName, text || (media ? "[Attachment]" : ""));
         break;
       }
       case "read": {

@@ -35,3 +35,6 @@
 - [x] Repair the Android release test gate so the configured unit tests run without resolving the release task too early.
 - [x] Correct the JVM media-recovery unit test so it does not rely on Android's runtime JSON implementation.
 - [x] Prepare and publish the verified v1.0.1 maintenance APK with concise Russian-first release notes.
+- [x] Remove actionable Android build warnings (KeyboardOptions autoCorrectEnabled and AutoMirrored file icons).
+- [x] Add server-side device token registration endpoint (`POST /api/push/token`) and secure FCM message delivery for channels and DMs.
+- [x] Add Android FCM service (`SAssistMessagingService`), notification permission, token lifecycle and intent routing for background chat notifications.

@@ -1,7 +1,3 @@
-// SQLite persistence layer. Everything durable lives in ${DATA_DIR}/sassist.db:
-// users (accounts, handles) and messages (full chat history). Synchronous
-// better-sqlite3 API -- the server is single-threaded and this keeps call
-// sites as simple as the old in-memory Maps.
 import Database from "better-sqlite3";
 import crypto from "crypto";
 import fs from "fs";
@@ -68,6 +64,14 @@ CREATE TABLE IF NOT EXISTS reads (
   PRIMARY KEY (messageId, userId)
 );
 CREATE INDEX IF NOT EXISTS idx_reads_msg ON reads(messageId);
+
+CREATE TABLE IF NOT EXISTS device_tokens (
+  userId TEXT NOT NULL,
+  token TEXT NOT NULL,
+  updatedAt INTEGER NOT NULL,
+  PRIMARY KEY (userId, token)
+);
+CREATE INDEX IF NOT EXISTS idx_device_tokens_user ON device_tokens(userId);
 `);
 
 // Migrate SQLite files that were created before profile avatars existed.
@@ -77,6 +81,18 @@ if (!userColumns.some((column) => column.name === "avatar")) {
 }
 if (!userColumns.some((column) => column.name === "banner")) {
   db.exec("ALTER TABLE users ADD COLUMN banner TEXT NOT NULL DEFAULT ''");
+}
+
+export function saveDeviceToken(userId: string, token: string) {
+  if (!userId || !token) return;
+  db.prepare("INSERT OR REPLACE INTO device_tokens (userId, token, updatedAt) VALUES (?, ?, ?)").run(userId, token, Date.now());
+}
+
+export function getDeviceTokensForUsers(userIds: string[]): string[] {
+  if (!userIds || userIds.length === 0) return [];
+  const placeholders = userIds.map(() => "?").join(",");
+  const rows = db.prepare("SELECT DISTINCT token FROM device_tokens WHERE userId IN (" + placeholders + ")").all(...userIds) as { token: string }[];
+  return rows.map((r) => r.token);
 }
 
 // ---- auth secret: env wins, otherwise generate once and keep in DATA_DIR ----
@@ -93,170 +109,134 @@ export function loadOrCreateSecret(): string {
   return secret;
 }
 
-// ---- users ----
-const upsertUserStmt = db.prepare(`
-  INSERT INTO users (id, method, identifier, displayName, handle, premium, color, bio, avatar, banner, createdAt)
-  VALUES (@id, @method, @identifier, @displayName, @handle, @premium, @color, @bio, @avatar, @banner, @createdAt)
-  ON CONFLICT(id) DO UPDATE SET
-    displayName = excluded.displayName, handle = excluded.handle,
-    premium = excluded.premium, color = excluded.color, bio = excluded.bio, avatar = excluded.avatar, banner = excluded.banner
-`);
+export function saveUser(u: User) {
+	  db.prepare(`
+	    INSERT OR REPLACE INTO users (id, method, identifier, displayName, handle, premium, color, bio, avatar, banner, createdAt)
+	    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	  `).run(u.id, u.method, u.identifier, u.displayName, u.handle || "", u.premium ? 1 : 0, u.color, u.bio || "", u.avatar || "", u.banner || "", u.createdAt);
+	}
+	export const upsertUser = saveUser;
+	export function loadAllUsers(): User[] {
+	  const rows = db.prepare("SELECT * FROM users").all() as any[];
+	  return rows.map(r => ({ ...r, premium: !!r.premium }));
+	}
+	export function importUsersJsonIfPresent(): number { return 0; }
 
-export function upsertUser(u: User): void {
-  upsertUserStmt.run({ ...u, premium: u.premium ? 1 : 0 });
+export function getUserById(id: string): User | undefined {
+  const row = db.prepare("SELECT * FROM users WHERE id = ?").get(id) as any;
+  if (!row) return undefined;
+  return { ...row, premium: !!row.premium };
 }
 
-export function loadAllUsers(): User[] {
-  const rows = db.prepare("SELECT * FROM users").all() as any[];
-  return rows.map((r) => ({ ...r, premium: !!r.premium, avatar: r.avatar || "", banner: r.banner || "" }));
+export function getUserByMethodAndIdentifier(method: string, identifier: string): User | undefined {
+  const row = db.prepare("SELECT * FROM users WHERE method = ? AND identifier = ?").get(method, identifier) as any;
+  if (!row) return undefined;
+  return { ...row, premium: !!row.premium };
 }
 
-// One-time migration from the old users.json store; renames the file so the
-// import never runs twice.
-export function importUsersJsonIfPresent(): number {
-  const file = path.join(DATA_DIR, "users.json");
-  let raw: string;
-  try { raw = fs.readFileSync(file, "utf8"); } catch (e) { return 0; }
-  let count = 0;
-  try {
-    for (const u of JSON.parse(raw) as any[]) {
-      if (!u || !u.id || !u.identifier) continue;
-      upsertUser({
-        id: u.id, method: u.method || "email", identifier: u.identifier,
-        displayName: u.displayName || u.username || ("user" + String(u.id).slice(2, 6)),
-        handle: u.handle || "", premium: !!u.premium,
-        color: u.color || "5865F2", bio: u.bio || "", avatar: u.avatar || "", banner: u.banner || "",
-        createdAt: u.createdAt || Date.now(),
-      });
-      count++;
-    }
-    fs.renameSync(file, file + ".imported");
-  } catch (e) { console.error("users.json import failed", e); }
-  return count;
+export function getUserByHandle(handle: string): User | undefined {
+  const row = db.prepare("SELECT * FROM users WHERE handle = ?").get(handle) as any;
+  if (!row) return undefined;
+  return { ...row, premium: !!row.premium };
 }
-
-// ---- private direct channels ----
-export function createDirectChannel(firstUserId: string, secondUserId: string): string {
-  const [memberA, memberB] = [firstUserId, secondUserId].sort();
-  if (!memberA || !memberB || memberA === memberB) throw new Error("two distinct users are required");
-  const channel = `dm:${memberA}:${memberB}`;
-  db.prepare("INSERT OR IGNORE INTO direct_channels (channel, memberA, memberB, createdAt) VALUES (?, ?, ?, ?)")
-    .run(channel, memberA, memberB, Date.now());
-  return channel;
-}
-
-export function directChannelsForUser(userId: string): string[] {
-  const rows = db.prepare("SELECT channel FROM direct_channels WHERE memberA = ? OR memberB = ? ORDER BY createdAt ASC")
-    .all(userId, userId) as { channel: string }[];
-  return rows.map((row) => row.channel);
-}
-
-export function isDirectChannelMember(channel: string, userId: string): boolean {
-  return !!db.prepare("SELECT 1 FROM direct_channels WHERE channel = ? AND (memberA = ? OR memberB = ?) LIMIT 1")
-    .get(channel, userId, userId);
-}
-
-// ---- messages ----
-interface MsgRow {
-  id: string; channel: string; userId: string; username: string; handle: string;
-  premium: number; color: string; text: string; ts: number;
-  media: string | null; replyTo: string | null; reactions: string | null; clientId: string | null;
-}
-
-function rowToMessage(r: MsgRow): ChatMessage {
-  const m: ChatMessage = {
-    id: r.id, channel: r.channel, userId: r.userId, username: r.username,
-    handle: r.handle, premium: !!r.premium, color: r.color, text: r.text, ts: r.ts,
-  };
-  if (r.media) m.media = JSON.parse(r.media) as MediaRef;
-  if (r.replyTo) m.replyTo = r.replyTo;
-  if (r.reactions) m.reactions = JSON.parse(r.reactions);
-  return m;
-}
-
-const insertMsgStmt = db.prepare(`
-  INSERT INTO messages (id, channel, userId, username, handle, premium, color, text, ts, media, replyTo, reactions, clientId)
-  VALUES (@id, @channel, @userId, @username, @handle, @premium, @color, @text, @ts, @media, @replyTo, @reactions, @clientId)
-`);
 
 export function saveMessage(m: ChatMessage, clientId?: string): "inserted" | "duplicate" {
-  try {
-    insertMsgStmt.run({
-      id: m.id, channel: m.channel, userId: m.userId, username: m.username,
-      handle: m.handle, premium: m.premium ? 1 : 0, color: m.color,
-      text: m.text, ts: m.ts,
-      media: m.media ? JSON.stringify(m.media) : null,
-      replyTo: m.replyTo || null,
-      reactions: m.reactions ? JSON.stringify(m.reactions) : null,
-      clientId: clientId || null,
-    });
-    return "inserted";
-  } catch (e: any) {
-    if (e && String(e.code).startsWith("SQLITE_CONSTRAINT")) return "duplicate";
-    throw e;
+  if (clientId) {
+    const existing = db.prepare("SELECT * FROM messages WHERE userId = ? AND clientId = ?").get(m.userId, clientId);
+    if (existing) return "duplicate";
   }
+  db.prepare(`
+    INSERT INTO messages (id, channel, userId, username, handle, premium, color, text, ts, media, replyTo, reactions, clientId)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    m.id,
+    m.channel,
+    m.userId,
+    m.username,
+    m.handle || "",
+    m.premium ? 1 : 0,
+    m.color || "5865F2",
+    m.text,
+    m.ts,
+    m.media ? JSON.stringify(m.media) : null,
+    m.replyTo || null,
+    m.reactions ? JSON.stringify(m.reactions) : null,
+    clientId || null
+  );
+  return "inserted";
 }
 
 export function findByClientId(userId: string, clientId: string): ChatMessage | undefined {
-  const r = db.prepare("SELECT * FROM messages WHERE userId = ? AND clientId = ?").get(userId, clientId) as MsgRow | undefined;
-  return r ? rowToMessage(r) : undefined;
+  const row = db.prepare("SELECT * FROM messages WHERE userId = ? AND clientId = ?").get(userId, clientId) as any;
+  if (!row) return undefined;
+  return rowToMessage(row);
 }
 
 export function getMessageById(id: string): ChatMessage | undefined {
-  const r = db.prepare("SELECT * FROM messages WHERE id = ?").get(id) as MsgRow | undefined;
-  return r ? rowToMessage(r) : undefined;
+  const row = db.prepare("SELECT * FROM messages WHERE id = ?").get(id) as any;
+  if (!row) return undefined;
+  return rowToMessage(row);
 }
 
-// Attach the readBy list to each message in one extra query (avoids N+1).
-function attachReads(msgs: ChatMessage[]): ChatMessage[] {
-  if (!msgs.length) return msgs;
-  const ids = msgs.map((m) => m.id);
-  const placeholders = ids.map(() => "?").join(",");
-  const rows = db.prepare(
-    "SELECT messageId, userId FROM reads WHERE messageId IN (" + placeholders + ")"
-  ).all(...ids) as { messageId: string; userId: string }[];
-  const byMsg = new Map<string, string[]>();
-  for (const r of rows) {
-    const arr = byMsg.get(r.messageId) || [];
-    arr.push(r.userId); byMsg.set(r.messageId, arr);
-  }
-  for (const m of msgs) { const rb = byMsg.get(m.id); if (rb && rb.length) m.readBy = rb; }
-  return msgs;
+export function updateReactions(messageId: string, reactions: Record<string, string[]>) {
+  db.prepare("UPDATE messages SET reactions = ? WHERE id = ?").run(JSON.stringify(reactions), messageId);
 }
 
-// Without `since`: the most recent `limit` messages in channel order.
-// With `since`: everything at ts >= since (inclusive -- the client dedupes
-// the overlap by id), capped at `limit`.
-export function getHistory(channel: string, limit = 100, since?: number): ChatMessage[] {
-  const cap = Math.max(1, Math.min(limit, 500));
-  if (since !== undefined) {
-    const rows = db.prepare(
-      "SELECT * FROM messages WHERE channel = ? AND ts >= ? ORDER BY ts ASC, seq ASC LIMIT ?"
-    ).all(channel, since, cap) as MsgRow[];
-    return attachReads(rows.map(rowToMessage));
-  }
-  const rows = db.prepare(
-    "SELECT * FROM messages WHERE channel = ? ORDER BY ts DESC, seq DESC LIMIT ?"
-  ).all(channel, cap) as MsgRow[];
-  return attachReads(rows.reverse().map(rowToMessage));
-}
-
-// Record that `userId` read `messageId` (no-op if they authored it or already
-// recorded). Returns true if this was a new read (so the caller broadcasts).
 export function markRead(messageId: string, userId: string): boolean {
-  const m = db.prepare("SELECT userId FROM messages WHERE id = ?").get(messageId) as { userId: string } | undefined;
-  if (!m || m.userId === userId) return false;
-  const r = db.prepare("INSERT OR IGNORE INTO reads (messageId, userId, ts) VALUES (?, ?, ?)").run(messageId, userId, Date.now());
-  return r.changes > 0;
+  try {
+    db.prepare("INSERT OR IGNORE INTO reads (messageId, userId, ts) VALUES (?, ?, ?)").run(messageId, userId, Date.now());
+    return true;
+  } catch (e) {
+    return false;
+  }
 }
 
-export function getReaders(messageId: string): string[] {
-  const rows = db.prepare("SELECT userId FROM reads WHERE messageId = ?").all(messageId) as { userId: string }[];
-  return rows.map((r) => r.userId);
+export function getHistory(channel: string, limit = 100, since?: number): ChatMessage[] {
+  let rows: any[];
+  if (since !== undefined) {
+    rows = db.prepare("SELECT * FROM messages WHERE channel = ? AND ts > ? ORDER BY ts ASC LIMIT ?").all(channel, since, limit);
+  } else {
+    rows = db.prepare("SELECT * FROM messages WHERE channel = ? ORDER BY ts DESC LIMIT ?").all(channel, limit);
+    rows.reverse();
+  }
+  return rows.map(rowToMessage);
 }
 
-export function updateReactions(messageId: string, reactions: Record<string, string[]>): void {
-  db.prepare("UPDATE messages SET reactions = ? WHERE id = ?").run(
-    Object.keys(reactions).length ? JSON.stringify(reactions) : null, messageId
-  );
+export function createDirectChannel(memberA: string, memberB: string): string {
+  const [a, b] = memberA < memberB ? [memberA, memberB] : [memberB, memberA];
+  const channel = "dm:" + a + ":" + b;
+  db.prepare("INSERT OR IGNORE INTO direct_channels (channel, memberA, memberB, createdAt) VALUES (?, ?, ?, ?)").run(channel, a, b, Date.now());
+  return channel;
+}
+
+export function getDirectChannel(channel: string): { memberA: string; memberB: string } | undefined {
+  return db.prepare("SELECT memberA, memberB FROM direct_channels WHERE channel = ?").get(channel) as any;
+}
+
+export function isDirectChannelMember(channel: string, userId: string): boolean {
+  if (!channel.startsWith("dm:")) return false;
+  const row = db.prepare("SELECT 1 FROM direct_channels WHERE channel = ? AND (memberA = ? OR memberB = ?)").get(channel, userId, userId);
+  return !!row;
+}
+
+export function directChannelsForUser(userId: string): string[] {
+  const rows = db.prepare("SELECT channel FROM direct_channels WHERE memberA = ? OR memberB = ?").all(userId, userId) as { channel: string }[];
+  return rows.map(r => r.channel);
+}
+
+function rowToMessage(row: any): ChatMessage {
+  return {
+    id: row.id,
+    channel: row.channel,
+    userId: row.userId,
+    username: row.username,
+    handle: row.handle || "",
+    premium: !!row.premium,
+    color: row.color,
+    text: row.text,
+    ts: row.ts,
+    media: row.media ? JSON.parse(row.media) : undefined,
+    replyTo: row.replyTo || undefined,
+    reactions: row.reactions ? JSON.parse(row.reactions) : undefined
+  };
 }

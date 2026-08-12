@@ -305,7 +305,36 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         c = ChatClient(
             onOpen = {
                 // Do not let an old socket authenticate after a forced reconnect.
-                if (client === c) c.send(JSONObject().put("type", "join").put("token", token).toString())
+                if (client === c) {
+                    c.send(JSONObject().put("type", "join").put("token", token).toString())
+                    // Register FCM push token if available
+                    com.google.firebase.messaging.FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
+                        if (task.isSuccessful) {
+                            val pushToken = task.result
+                            if (!pushToken.isNullOrBlank()) {
+                                viewModelScope.launch(Dispatchers.IO) {
+                                    try {
+                                        var httpUrl = session.serverUrl
+                                        if (httpUrl.startsWith("ws://")) httpUrl = httpUrl.replace("ws://", "http://")
+                                        if (httpUrl.startsWith("wss://")) httpUrl = httpUrl.replace("wss://", "https://")
+                                        if (!httpUrl.contains("://")) httpUrl = "https://$httpUrl"
+                                        val client = okhttp3.OkHttpClient()
+                                        val json = JSONObject().put("token", pushToken).toString()
+                                        val body = json.toRequestBody("application/json; charset=utf-8".toMediaType())
+                                        val req = okhttp3.Request.Builder()
+                                            .url("$httpUrl/api/push/token")
+                                            .addHeader("Authorization", "Bearer $token")
+                                            .post(body)
+                                            .build()
+                                        client.newCall(req).execute().close()
+                                    } catch (e: Exception) {
+                                        // ignore
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             },
             onText = { if (client === c) handle(it) },
             onClosed = { code, reason ->

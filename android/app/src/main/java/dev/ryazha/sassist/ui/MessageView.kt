@@ -24,7 +24,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.Download
-import androidx.compose.material.icons.filled.InsertDriveFile
+import androidx.compose.material.icons.automirrored.filled.InsertDriveFile
 import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -278,7 +278,7 @@ fun MessageView(
                             .padding(horizontal = 10.dp, vertical = 9.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(Icons.Filled.InsertDriveFile, contentDescription = null, tint = TgAccent, modifier = Modifier.size(22.dp))
+                        Icon(Icons.AutoMirrored.Filled.InsertDriveFile, contentDescription = null, tint = TgAccent, modifier = Modifier.size(22.dp))
                         Spacer(Modifier.width(8.dp))
                         Column(Modifier.weight(1f, fill = false)) {
                             Text(media.name, color = TextPrimary, fontSize = 13.sp, maxLines = 1)

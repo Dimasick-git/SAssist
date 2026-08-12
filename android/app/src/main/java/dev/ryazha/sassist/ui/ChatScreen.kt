@@ -349,7 +349,7 @@ fun ChatScreen(
                 placeholder = { Text(if (codeMode) tr("Вставьте код…", "Paste code…") else tr("Сообщение…", "Message…"), color = TextMuted) },
                 modifier = Modifier.weight(1f), colors = tf, shape = RoundedCornerShape(20.dp),
                 maxLines = if (codeMode) 6 else 4,
-                keyboardOptions = KeyboardOptions(autoCorrect = !codeMode)
+                keyboardOptions = KeyboardOptions(autoCorrectEnabled = !codeMode)
             )
             Spacer(Modifier.width(6.dp))
             if (input.isBlank()) {
