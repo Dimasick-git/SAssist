@@ -1,28 +1,29 @@
-# Render.com Blueprint -- deploys the SAssist server to a public HTTPS/WSS URL.
+# Render.com Blueprint -- deploys the SAssist Labs server to a public HTTPS/WSS URL.
 # How to deploy:
 #   1. Push this repo to GitHub (done).
 #   2. Go to https://render.com -> New -> Blueprint -> connect the SAssist repo.
 #   3. Render reads this file and creates the service. Click Apply.
-#   4. You get a URL like https://sassist.onrender.com  ->  use wss://sassist.onrender.com in the app.
+#   4. You get a URL like https://sassist-labs.onrender.com  ->  use wss://sassist-labs.onrender.com in the app.
+#
+# Free mode: no card is needed. Render can spin a free service down after idle
+# time, and its local files reset after a restart or redeploy. This mode is for
+# testing only; persistent profiles, media and message history need an external
+# database/object store or a paid persistent disk.
 services:
   - type: web
-    name: sassist
+    name: sassist-labs
     runtime: docker
     repo: https://github.com/Dimasick-git/SAssist
     dockerfilePath: ./server/Dockerfile
     dockerContext: ./server
-    # NOTE: the free plan has no persistent disk -- users/messages/media reset
-    # on every deploy there. The starter plan + disk below keeps everything.
-    plan: starter
-    disk:
-      name: sassist-data
-      mountPath: /data
-      sizeGB: 1
+    plan: free
     healthCheckPath: /health
     autoDeploy: true
     envVars:
       - key: PORT
         value: 8080
+      - key: DATA_DIR
+        value: /tmp/sassist-data
       - key: AUTH_SECRET
         generateValue: true        # persisted by Render so tokens survive restarts
       # Set in the Render dashboard to enable premium @username claims:

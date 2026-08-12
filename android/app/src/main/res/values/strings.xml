@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">SAssist</string>
+    <string name="organization_name">SAssist Labs</string>
+    <string name="project_author">Dimasick-git</string>
 </resources>
