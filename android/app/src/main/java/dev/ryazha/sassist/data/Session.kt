@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
+import dev.ryazha.sassist.model.AppLanguage
 
 /**
  * Secure session store. Token, display name and per-room E2EE keys live in
@@ -46,6 +47,11 @@ class Session(context: Context) {
     var username: String?
         get() = prefs.getString("username", null)
         set(v) { prefs.edit().putString("username", v).apply() }
+
+    /** Russian is the initial language even when the device itself is set to another locale. */
+    var language: AppLanguage
+        get() = AppLanguage.fromStored(prefs.getString("language", AppLanguage.Russian.storedValue))
+        set(v) { prefs.edit().putString("language", v.storedValue).apply() }
 
     // Migrate the inactive historic Koyeb default while preserving every other
     // user-selected server address as an explicit override.

@@ -44,7 +44,7 @@ private fun ProfileBanner(imageUrl: String?, accent: Color, onClick: () -> Unit)
         if (!imageUrl.isNullOrBlank()) {
             AsyncImage(
                 model = imageUrl,
-                contentDescription = "Profile banner",
+                contentDescription = tr("Баннер профиля", "Profile banner"),
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize()
             )
@@ -54,8 +54,8 @@ private fun ProfileBanner(imageUrl: String?, accent: Color, onClick: () -> Unit)
             shape = RoundedCornerShape(8.dp), color = Color.Black.copy(alpha = 0.55f)
         ) {
             Row(Modifier.padding(horizontal = 8.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Filled.AddAPhoto, contentDescription = "Change banner", tint = Color.White, modifier = Modifier.size(14.dp))
-                Text("  Edit banner", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                Icon(Icons.Filled.AddAPhoto, contentDescription = tr("Изменить баннер", "Change banner"), tint = Color.White, modifier = Modifier.size(14.dp))
+                Text("  " + tr("Изменить баннер", "Edit banner"), color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
             }
         }
     }
@@ -79,7 +79,7 @@ private fun ProfileAvatar(
         if (!avatarUrl.isNullOrBlank()) {
             AsyncImage(
                 model = avatarUrl,
-                contentDescription = "Profile avatar",
+                contentDescription = tr("Аватар профиля", "Profile avatar"),
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize()
             )
@@ -96,7 +96,7 @@ private fun ProfileAvatar(
                 Modifier.align(Alignment.BottomEnd).size(28.dp).clip(CircleShape)
                     .background(BgDark).border(2.dp, BgPanel, CircleShape),
                 contentAlignment = Alignment.Center
-            ) { Icon(Icons.Filled.AddAPhoto, contentDescription = "Change avatar", tint = TextPrimary, modifier = Modifier.size(15.dp)) }
+            ) { Icon(Icons.Filled.AddAPhoto, contentDescription = tr("Изменить аватар", "Change avatar"), tint = TextPrimary, modifier = Modifier.size(15.dp)) }
         }
     }
 }
@@ -133,8 +133,8 @@ fun ProfileScreen(
             Modifier.fillMaxWidth().background(BgDark).padding(horizontal = 6.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = TextPrimary) }
-            Text("My profile", color = TextPrimary, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+            IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = tr("Назад", "Back"), tint = TextPrimary) }
+            Text(tr("Мой профиль", "My profile"), color = TextPrimary, fontSize = 17.sp, fontWeight = FontWeight.Bold)
         }
 
         Column(
@@ -161,8 +161,8 @@ fun ProfileScreen(
                     )
                     Column(Modifier.fillMaxWidth().padding(start = 18.dp, end = 18.dp, top = 176.dp, bottom = 18.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(profile.displayName.ifBlank { "New SAssist member" }, color = TextPrimary, fontSize = 22.sp, fontWeight = FontWeight.Black, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            if (profile.premium) Icon(Icons.Filled.CheckCircle, contentDescription = "Verified", tint = Color(0xFFFEE75C), modifier = Modifier.padding(start = 6.dp).size(18.dp))
+                            Text(profile.displayName.ifBlank { tr("Новый участник SAssist", "New SAssist member") }, color = TextPrimary, fontSize = 22.sp, fontWeight = FontWeight.Black, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            if (profile.premium) Icon(Icons.Filled.CheckCircle, contentDescription = tr("Подтверждён", "Verified"), tint = Color(0xFFFEE75C), modifier = Modifier.padding(start = 6.dp).size(18.dp))
                         }
                         Text(
                             if (profile.handle.isBlank()) "@choose_username" else "@${profile.handle}",
@@ -171,28 +171,28 @@ fun ProfileScreen(
                         if (profile.bio.isNotBlank()) Text(profile.bio, color = TextPrimary, fontSize = 14.sp, modifier = Modifier.padding(top = 12.dp))
                         Row(Modifier.padding(top = 14.dp), verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = OnlineGreen, modifier = Modifier.size(15.dp))
-                            Text("  All core features are enabled", color = TextMuted, fontSize = 12.sp)
+                            Text("  " + tr("Все основные функции включены", "All core features are enabled"), color = TextMuted, fontSize = 12.sp)
                         }
                     }
                 }
             }
 
-            Text("PROFILE CUSTOMIZATION", color = TextMuted, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            Text(tr("НАСТРОЙКА ПРОФИЛЯ", "PROFILE CUSTOMIZATION"), color = TextMuted, fontSize = 12.sp, fontWeight = FontWeight.Bold)
             OutlinedTextField(
                 value = name, onValueChange = { name = it.take(40) }, modifier = Modifier.fillMaxWidth(),
                 colors = textFieldColors, shape = RoundedCornerShape(12.dp), singleLine = true,
-                label = { Text("Display name") }, supportingText = { Text("This is how other members see you.") }
+                label = { Text(tr("Отображаемое имя", "Display name")) }, supportingText = { Text(tr("Так вас видят другие участники.", "This is how other members see you.")) }
             )
             OutlinedTextField(
                 value = bio, onValueChange = { bio = it.take(200) }, modifier = Modifier.fillMaxWidth(),
                 colors = textFieldColors, shape = RoundedCornerShape(12.dp), minLines = 3, maxLines = 4,
-                label = { Text("About me") }, placeholder = { Text("Tell the community about yourself", color = TextMuted) },
+                label = { Text(tr("О себе", "About me")) }, placeholder = { Text(tr("Расскажите сообществу о себе", "Tell the community about yourself"), color = TextMuted) },
                 supportingText = { Text("${bio.length}/200") }
             )
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Filled.ColorLens, contentDescription = null, tint = TextMuted, modifier = Modifier.size(16.dp))
-                    Text("  Profile accent", color = TextMuted, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    Text("  " + tr("Акцент профиля", "Profile accent"), color = TextMuted, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
                     PROFILE_COLORS.forEach { swatch ->
@@ -208,11 +208,11 @@ fun ProfileScreen(
             Button(
                 onClick = { onSave(name.trim(), bio, color) }, enabled = !profile.busy && name.isNotBlank(),
                 colors = ButtonDefaults.buttonColors(containerColor = Blurple), modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp)
-            ) { Text("Save profile") }
+            ) { Text(tr("Сохранить профиль", "Save profile")) }
 
             HorizontalDivider(color = BgPanel)
-            Text("USERNAME", color = TextMuted, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-            Text("Claim an @username that other members can use to find you. All valid usernames are available to everyone.", color = TextMuted, fontSize = 12.sp)
+            Text(tr("ИМЯ ПОЛЬЗОВАТЕЛЯ", "USERNAME"), color = TextMuted, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            Text(tr("Выберите @username, по которому вас смогут найти другие участники. Все подходящие имена доступны каждому.", "Claim an @username that other members can use to find you. All valid usernames are available to everyone."), color = TextMuted, fontSize = 12.sp)
             OutlinedTextField(
                 value = handle,
                 onValueChange = {
@@ -220,17 +220,17 @@ fun ProfileScreen(
                     if (handle.length >= 3) onCheckHandle(handle)
                 },
                 modifier = Modifier.fillMaxWidth(), colors = textFieldColors, shape = RoundedCornerShape(12.dp), singleLine = true,
-                prefix = { Text("@", color = TgAccent) }, label = { Text("Username") }
+                prefix = { Text("@", color = TgAccent) }, label = { Text(tr("Имя пользователя", "Username")) }
             )
             profile.handleCheck?.let { Text(it, color = if (it.contains("available")) OnlineGreen else Color(0xFFED4245), fontSize = 12.sp) }
             Button(
                 onClick = { if (handle.isNotBlank()) onClaimHandle(handle) },
                 enabled = !profile.busy && handle.length >= 3 && handle != profile.handle,
                 colors = ButtonDefaults.buttonColors(containerColor = TgAccent), modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp)
-            ) { Text("Save @username") }
+            ) { Text(tr("Сохранить @username", "Save @username")) }
 
             HorizontalDivider(color = BgPanel)
-            TextButton(onClick = onLogout, modifier = Modifier.fillMaxWidth()) { Text("Log out", color = Color(0xFFED4245)) }
+            TextButton(onClick = onLogout, modifier = Modifier.fillMaxWidth()) { Text(tr("Выйти", "Log out"), color = Color(0xFFED4245)) }
         }
     }
 }

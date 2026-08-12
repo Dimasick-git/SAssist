@@ -51,8 +51,8 @@ private fun formatMillis(ms: Long): String {
 fun ConnBanner(connState: ConnState) {
     if (connState == ConnState.Connected) return
     val (text, color) = when (connState) {
-        ConnState.Connecting -> "Connecting…" to Color(0xFFFAA61A)
-        else -> "Offline — messages will send when back online" to TextMuted
+        ConnState.Connecting -> tr("Подключение…", "Connecting…") to Color(0xFFFAA61A)
+        else -> tr("Не в сети — сообщения отправятся после подключения", "Offline — messages will send when back online") to TextMuted
     }
     Box(
         Modifier.fillMaxWidth().background(BgPanel).padding(vertical = 4.dp),
@@ -104,7 +104,7 @@ fun ChatScreen(
     var keyDialog by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
     val isDirect = currentChannel.startsWith("dm:")
-    val title = if (isDirect) "Direct message" else (CHANNEL_META[currentChannel]?.title ?: currentChannel)
+    val title = if (isDirect) tr("Личный чат", "Direct message") else (CHANNEL_META[currentChannel]?.title ?: currentChannel)
     val byId = remember(messages) { messages.associateBy { it.id } }
 
     val pickMedia = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
@@ -142,11 +142,11 @@ fun ChatScreen(
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(onClick = onBack) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = TextPrimary)
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = tr("Назад", "Back"), tint = TextPrimary)
             }
             Column(Modifier.weight(1f)) {
                 Text("# " + title, color = TextPrimary, fontSize = 17.sp, fontWeight = FontWeight.Bold)
-                Text(presence.toString() + " online", color = OnlineGreen, fontSize = 11.sp)
+                Text(presence.toString() + tr(" в сети", " online"), color = OnlineGreen, fontSize = 11.sp)
             }
             if (e2ee) {
                 Row(
@@ -156,14 +156,14 @@ fun ChatScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     val keyColor = if (hasCustomKey) OnlineGreen else Color(0xFFFAA61A)
-                    Icon(Icons.Filled.Lock, contentDescription = "Encrypted", tint = keyColor, modifier = Modifier.size(13.dp))
+                    Icon(Icons.Filled.Lock, contentDescription = tr("Зашифровано", "Encrypted"), tint = keyColor, modifier = Modifier.size(13.dp))
                     Spacer(Modifier.width(4.dp))
                     Text("E2EE", color = keyColor, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                 }
                 Spacer(Modifier.width(4.dp))
             }
             IconButton(onClick = onOpenScripts) {
-                Icon(Icons.Filled.Terminal, contentDescription = "Scripts", tint = TextPrimary)
+                Icon(Icons.Filled.Terminal, contentDescription = tr("Скрипты", "Scripts"), tint = TextPrimary)
             }
         }
 
@@ -184,7 +184,7 @@ fun ChatScreen(
                         .clickable { onChannel(ch) }.padding(horizontal = 12.dp, vertical = 7.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    val label = if (ch.startsWith("dm:")) "✉ Direct" else ((meta?.emoji ?: "#") + " " + (meta?.title ?: ch))
+                    val label = if (ch.startsWith("dm:")) "✉ " + tr("Личный", "Direct") else ((meta?.emoji ?: "#") + " " + (meta?.title ?: ch))
                     Text(label, color = if (sel) TextPrimary else TextMuted, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                 }
             }
@@ -192,7 +192,7 @@ fun ChatScreen(
 
         if (isDirect && !hasCustomKey) {
             Text(
-                "Set the same room key on both devices to encrypt this direct conversation.",
+                tr("Установите одинаковый ключ комнаты на обоих устройствах, чтобы зашифровать этот личный чат.", "Set the same room key on both devices to encrypt this direct conversation."),
                 color = Color(0xFFFAA61A), fontSize = 11.sp,
                 modifier = Modifier.fillMaxWidth().background(BgPanel).padding(horizontal = 14.dp, vertical = 6.dp)
             )
@@ -218,7 +218,7 @@ fun ChatScreen(
 
         if (typingUser != null) {
             Text(
-                text = "$typingUser is typing...",
+                text = typingUser + tr(" печатает…", " is typing..."),
                 color = OnlineGreen,
                 fontSize = 11.sp,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
@@ -234,7 +234,7 @@ fun ChatScreen(
                 Box(Modifier.width(3.dp).height(30.dp).clip(RoundedCornerShape(2.dp)).background(TgAccent))
                 Spacer(Modifier.width(8.dp))
                 Column(Modifier.weight(1f)) {
-                    Text("Reply to " + replyingTo.username, color = TgAccent, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                    Text(tr("Ответ для ", "Reply to ") + replyingTo.username, color = TgAccent, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                     Text(
                         (if (replyingTo.text.isBlank() && replyingTo.media != null) "[" + replyingTo.media.kind + "]" else replyingTo.text)
                             .replace("\n", " ").take(64),
@@ -242,7 +242,7 @@ fun ChatScreen(
                     )
                 }
                 IconButton(onClick = onCancelReply) {
-                    Icon(Icons.Filled.Close, contentDescription = "Cancel reply", tint = TextMuted, modifier = Modifier.size(16.dp))
+                    Icon(Icons.Filled.Close, contentDescription = tr("Отменить ответ", "Cancel reply"), tint = TextMuted, modifier = Modifier.size(16.dp))
                 }
             }
         }
@@ -259,9 +259,9 @@ fun ChatScreen(
             ) {
                 Box(Modifier.size(10.dp).clip(RoundedCornerShape(5.dp)).background(Color(0xFFED4245)))
                 Spacer(Modifier.width(10.dp))
-                Text("Recording… " + formatMillis(elapsed), color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                Text(tr("Запись… ", "Recording… ") + formatMillis(elapsed), color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                 Spacer(Modifier.weight(1f))
-                Text("release to send · slide off to cancel", color = TextMuted, fontSize = 11.sp)
+                Text(tr("отпустите для отправки · смахните для отмены", "release to send · slide off to cancel"), color = TextMuted, fontSize = 11.sp)
             }
         }
 
@@ -271,7 +271,7 @@ fun ChatScreen(
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(onClick = onToggleCode) {
-                Icon(Icons.Filled.Code, contentDescription = "Code mode", tint = if (codeMode) TgAccent else TextMuted)
+                Icon(Icons.Filled.Code, contentDescription = tr("Режим кода", "Code mode"), tint = if (codeMode) TgAccent else TextMuted)
             }
             IconButton(
                 onClick = {
@@ -280,17 +280,17 @@ fun ChatScreen(
                 enabled = !uploadBusy
             ) {
                 if (uploadBusy) CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp, color = TgAccent)
-                else Icon(Icons.Filled.AddPhotoAlternate, contentDescription = "Attach photo/video", tint = TextMuted)
+                else Icon(Icons.Filled.AddPhotoAlternate, contentDescription = tr("Прикрепить фото или видео", "Attach photo/video"), tint = TextMuted)
             }
             IconButton(onClick = { pickFile.launch("*/*") }, enabled = !uploadBusy) {
-                Icon(Icons.Filled.AttachFile, contentDescription = "Attach file", tint = TextMuted)
+                Icon(Icons.Filled.AttachFile, contentDescription = tr("Прикрепить файл", "Attach file"), tint = TextMuted)
             }
             OutlinedTextField(
                 value = input, onValueChange = {
                     input = it
                     if (it.isNotEmpty()) onTyping()
                 },
-                placeholder = { Text(if (codeMode) "Paste code…" else "Message…", color = TextMuted) },
+                placeholder = { Text(if (codeMode) tr("Вставьте код…", "Paste code…") else tr("Сообщение…", "Message…"), color = TextMuted) },
                 modifier = Modifier.weight(1f), colors = tf, shape = RoundedCornerShape(20.dp),
                 maxLines = if (codeMode) 6 else 4,
                 keyboardOptions = KeyboardOptions(autoCorrect = !codeMode)
@@ -317,7 +317,7 @@ fun ChatScreen(
                         },
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(Icons.Filled.Mic, contentDescription = "Hold to record voice", tint = Color.White)
+                    Icon(Icons.Filled.Mic, contentDescription = tr("Удерживайте для записи голоса", "Hold to record voice"), tint = Color.White)
                 }
             } else {
                 IconButton(
@@ -328,7 +328,7 @@ fun ChatScreen(
                             onSend(payload); input = ""
                         }
                     }
-                ) { Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send", tint = Blurple) }
+                ) { Icon(Icons.AutoMirrored.Filled.Send, contentDescription = tr("Отправить", "Send"), tint = Blurple) }
             }
         }
     }
@@ -339,24 +339,24 @@ fun ChatScreen(
         AlertDialog(
             onDismissRequest = { keyDialog = false },
             containerColor = BgDark,
-            title = { Text("Room encryption key", color = TextPrimary) },
+            title = { Text(tr("Ключ шифрования комнаты", "Room encryption key"), color = TextPrimary) },
             text = {
                 Column {
                     if (!hasCustomKey) {
                         Text(
-                            "This room uses the default key — anyone on this server can read it. Set a passphrase and share it with your chat partners off-band.",
+                            tr("В этой комнате используется стандартный ключ — её может прочитать любой пользователь сервера. Установите пароль и передайте его собеседникам другим способом.", "This room uses the default key — anyone on this server can read it. Set a passphrase and share it with your chat partners off-band."),
                             color = Color(0xFFFAA61A), fontSize = 12.sp
                         )
                         Spacer(Modifier.height(8.dp))
                     }
                     OutlinedTextField(
                         value = key, onValueChange = { key = it },
-                        placeholder = { Text("Passphrase for #$currentChannel", color = TextMuted) },
+                        placeholder = { Text(tr("Пароль для #", "Passphrase for #") + currentChannel, color = TextMuted) },
                         colors = tf, shape = RoundedCornerShape(12.dp), singleLine = true
                     )
                     Spacer(Modifier.height(4.dp))
                     Text(
-                        "Changing the key clears the local cache and re-syncs history.",
+                        tr("При смене ключа локальный кэш очистится, а история загрузится заново.", "Changing the key clears the local cache and re-syncs history."),
                         color = TextMuted, fontSize = 11.sp
                     )
                 }
@@ -364,10 +364,10 @@ fun ChatScreen(
             confirmButton = {
                 TextButton(onClick = {
                     if (key.isNotBlank()) { onSetRoomKey(key); keyDialog = false }
-                }) { Text("Set key", color = TgAccent) }
+                }) { Text(tr("Установить ключ", "Set key"), color = TgAccent) }
             },
             dismissButton = {
-                TextButton(onClick = { keyDialog = false }) { Text("Cancel", color = TextMuted) }
+                TextButton(onClick = { keyDialog = false }) { Text(tr("Отмена", "Cancel"), color = TextMuted) }
             }
         )
     }

@@ -20,6 +20,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.ryazha.sassist.model.CHANNEL_META
+import dev.ryazha.sassist.model.AppLanguage
 import dev.ryazha.sassist.model.ChannelMeta
 import dev.ryazha.sassist.model.ConnState
 import dev.ryazha.sassist.ui.theme.*
@@ -35,10 +36,13 @@ fun ChatsListScreen(
     onScripts: () -> Unit,
     onProfile: () -> Unit,
     onLogout: () -> Unit,
-    onServer: (String) -> Unit
+    onServer: (String) -> Unit,
+    onLanguage: (AppLanguage) -> Unit
 ) {
     var menu by remember { mutableStateOf(false) }
     var serverDialog by remember { mutableStateOf(false) }
+    var settingsDialog by remember { mutableStateOf(false) }
+    val language = LocalAppLanguage.current
 
     Column(Modifier.fillMaxSize().background(BgDarkest)) {
         // Top bar
@@ -60,13 +64,14 @@ fun ChatsListScreen(
             }
             Box {
                 IconButton(onClick = { menu = true }) {
-                    Icon(Icons.Filled.MoreVert, contentDescription = "Menu", tint = TextPrimary)
+                    Icon(Icons.Filled.MoreVert, contentDescription = tr("Меню", "Menu"), tint = TextPrimary)
                 }
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                    DropdownMenuItem(text = { Text("Profile") }, onClick = { menu = false; onProfile() })
-                    DropdownMenuItem(text = { Text("Scripts") }, onClick = { menu = false; onScripts() })
-                    DropdownMenuItem(text = { Text("Change server URL") }, onClick = { menu = false; serverDialog = true })
-                    DropdownMenuItem(text = { Text("Log out") }, onClick = { menu = false; onLogout() })
+                    DropdownMenuItem(text = { Text(tr("Профиль", "Profile")) }, onClick = { menu = false; onProfile() })
+                    DropdownMenuItem(text = { Text(tr("Скрипты", "Scripts")) }, onClick = { menu = false; onScripts() })
+                    DropdownMenuItem(text = { Text(tr("Настройки", "Settings")) }, onClick = { menu = false; settingsDialog = true })
+                    DropdownMenuItem(text = { Text(tr("Адрес сервера", "Server URL")) }, onClick = { menu = false; serverDialog = true })
+                    DropdownMenuItem(text = { Text(tr("Выйти", "Log out")) }, onClick = { menu = false; onLogout() })
                 }
             }
         }
@@ -74,7 +79,7 @@ fun ChatsListScreen(
         ConnBanner(connState)
 
         Text(
-            "  Channels", color = TextMuted, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
+            "  " + tr("Каналы", "Channels"), color = TextMuted, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
             modifier = Modifier.padding(start = 16.dp, top = 14.dp, bottom = 6.dp)
         )
 
@@ -86,13 +91,35 @@ fun ChatsListScreen(
         }
     }
 
+    if (settingsDialog) {
+        AlertDialog(
+            onDismissRequest = { settingsDialog = false },
+            confirmButton = { TextButton(onClick = { settingsDialog = false }) { Text(tr("Готово", "Done")) } },
+            title = { Text(tr("Настройки", "Settings")) },
+            text = {
+                Column {
+                    Text(tr("Язык интерфейса", "Interface language"), color = TextPrimary)
+                    Row(Modifier.fillMaxWidth().clickable { onLanguage(AppLanguage.Russian) }, verticalAlignment = Alignment.CenterVertically) {
+                        RadioButton(selected = language == AppLanguage.Russian, onClick = { onLanguage(AppLanguage.Russian) })
+                        Text("Русский", color = TextPrimary)
+                    }
+                    Row(Modifier.fillMaxWidth().clickable { onLanguage(AppLanguage.English) }, verticalAlignment = Alignment.CenterVertically) {
+                        RadioButton(selected = language == AppLanguage.English, onClick = { onLanguage(AppLanguage.English) })
+                        Text("English", color = TextPrimary)
+                    }
+                }
+            },
+            containerColor = BgPanel
+        )
+    }
+
     if (serverDialog) {
         var url by remember { mutableStateOf("") }
         AlertDialog(
             onDismissRequest = { serverDialog = false },
-            confirmButton = { TextButton(onClick = { onServer(url); serverDialog = false }) { Text("Save") } },
-            dismissButton = { TextButton(onClick = { serverDialog = false }) { Text("Cancel") } },
-            title = { Text("Server URL") },
+            confirmButton = { TextButton(onClick = { onServer(url); serverDialog = false }) { Text(tr("Сохранить", "Save")) } },
+            dismissButton = { TextButton(onClick = { serverDialog = false }) { Text(tr("Отмена", "Cancel")) } },
+            title = { Text(tr("Адрес сервера", "Server URL")) },
             text = {
                 OutlinedTextField(value = url, onValueChange = { url = it }, singleLine = true,
                     placeholder = { Text("ws://10.0.2.2:8080") })
@@ -135,9 +162,10 @@ private fun initials(name: String): String {
     return (parts.firstOrNull()?.take(1) ?: "U").uppercase()
 }
 
+@Composable
 private fun connLabel(s: ConnState): String = when (s) {
-    ConnState.Connected -> "● online"
-    ConnState.Connecting -> "connecting…"
-    ConnState.Error -> "connection error"
-    ConnState.Disconnected -> "offline"
+    ConnState.Connected -> tr("● в сети", "● online")
+    ConnState.Connecting -> tr("подключение…", "connecting…")
+    ConnState.Error -> tr("ошибка подключения", "connection error")
+    ConnState.Disconnected -> tr("не в сети", "offline")
 }

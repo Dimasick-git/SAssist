@@ -13,6 +13,7 @@ import androidx.work.WorkManager
 import dev.ryazha.sassist.audio.VoicePlayer
 import dev.ryazha.sassist.audio.VoiceRecorder
 import dev.ryazha.sassist.crypto.E2ee
+import dev.ryazha.sassist.model.AppLanguage
 import dev.ryazha.sassist.model.AuthMethod
 import dev.ryazha.sassist.model.ChatMessage
 import dev.ryazha.sassist.model.ConnState
@@ -80,6 +81,7 @@ data class ChatState(
     val typingByChannel: Map<String, String?> = emptyMap(), // channel -> username
     val username: String = "",
     val userId: String = "",
+    val language: AppLanguage = AppLanguage.Russian,
     val authMethod: AuthMethod = AuthMethod.Email,
     val pendingIdentifier: String = "",
     val pendingUsername: String = "",
@@ -130,6 +132,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     init {
+        _state.update { it.copy(language = session.language) }
         val token = session.token
         if (!token.isNullOrBlank()) {
             _state.update { it.copy(stage = Stage.Chats, username = session.username ?: "") }
@@ -179,6 +182,10 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     fun startAuth() { _state.update { it.copy(stage = Stage.EnterIdentifier, authError = null) } }
     fun setMethod(m: AuthMethod) { _state.update { it.copy(authMethod = m) } }
     fun setServerUrl(url: String) { session.serverUrl = url.trim() }
+    fun setLanguage(language: AppLanguage) {
+        session.language = language
+        _state.update { it.copy(language = language) }
+    }
 
     // ---- auth ----
     fun requestCode(method: AuthMethod, identifier: String, username: String) {

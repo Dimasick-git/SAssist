@@ -44,15 +44,15 @@ fun CodeScreen(
 
     Column(Modifier.fillMaxSize().background(BgDarkest).padding(24.dp)) {
         IconButton(onClick = onBack) {
-            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = TextPrimary)
+            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = tr("Назад", "Back"), tint = TextPrimary)
         }
         Spacer(Modifier.height(8.dp))
-        Text("Enter code", color = TextPrimary, fontSize = 30.sp, fontWeight = FontWeight.Black)
+        Text(tr("Введите код", "Enter code"), color = TextPrimary, fontSize = 30.sp, fontWeight = FontWeight.Black)
         Spacer(Modifier.height(6.dp))
-        Text("Sent to " + identifier, color = TextMuted, fontSize = 14.sp)
+        Text(tr("Отправлено на ", "Sent to ") + identifier, color = TextMuted, fontSize = 14.sp)
         if (!devCode.isNullOrBlank()) {
             Spacer(Modifier.height(4.dp))
-            Text("Dev mode: code auto-filled", color = TgAccent, fontSize = 12.sp)
+            Text(tr("Режим разработки: код подставлен автоматически", "Dev mode: code auto-filled"), color = TgAccent, fontSize = 12.sp)
         }
         Spacer(Modifier.height(28.dp))
 
@@ -84,10 +84,10 @@ fun CodeScreen(
 
         Spacer(Modifier.height(18.dp))
         if (countdown > 0) {
-            Text("Resend code in " + countdown + "s", color = TextMuted, fontSize = 13.sp)
+            Text(tr("Повторная отправка через ", "Resend code in ") + countdown + tr(" с", "s"), color = TextMuted, fontSize = 13.sp)
         } else {
             Text(
-                "Resend code", color = TgAccent, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
+                tr("Отправить код повторно", "Resend code"), color = TgAccent, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.clickable { countdown = 30; onResend() }
             )
         }
@@ -101,7 +101,7 @@ fun CodeScreen(
             colors = ButtonDefaults.buttonColors(containerColor = Blurple, disabledContainerColor = BgPanel)
         ) {
             if (busy) CircularProgressIndicator(Modifier.size(22.dp), color = TextPrimary, strokeWidth = 2.dp)
-            else Text("Verify & continue", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+            else Text(tr("Подтвердить и продолжить", "Verify & continue"), fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
         }
     }
 }

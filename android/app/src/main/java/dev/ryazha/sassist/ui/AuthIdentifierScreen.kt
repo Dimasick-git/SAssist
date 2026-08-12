@@ -47,26 +47,26 @@ fun AuthIdentifierScreen(
 
     Column(Modifier.fillMaxSize().background(BgDarkest).padding(24.dp)) {
         IconButton(onClick = onBack) {
-            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = TextPrimary)
+            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = tr("Назад", "Back"), tint = TextPrimary)
         }
         Spacer(Modifier.height(8.dp))
-        Text("Sign in", color = TextPrimary, fontSize = 30.sp, fontWeight = FontWeight.Black)
+        Text(tr("Вход", "Sign in"), color = TextPrimary, fontSize = 30.sp, fontWeight = FontWeight.Black)
         Spacer(Modifier.height(6.dp))
-        Text("We'll text or email you a one-time code.", color = TextMuted, fontSize = 14.sp)
+        Text(tr("Мы отправим одноразовый код по SMS или email.", "We'll text or email you a one-time code."), color = TextMuted, fontSize = 14.sp)
         Spacer(Modifier.height(24.dp))
 
         // segmented Phone | Email
         Row(
             Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(BgPanel).padding(4.dp)
         ) {
-            SegItem("📱 Phone", method == AuthMethod.Phone, Modifier.weight(1f)) { onMethod(AuthMethod.Phone) }
-            SegItem("✉️ Email", method == AuthMethod.Email, Modifier.weight(1f)) { onMethod(AuthMethod.Email) }
+            SegItem(tr("📱 Телефон", "📱 Phone"), method == AuthMethod.Phone, Modifier.weight(1f)) { onMethod(AuthMethod.Phone) }
+            SegItem(tr("✉️ Email", "✉️ Email"), method == AuthMethod.Email, Modifier.weight(1f)) { onMethod(AuthMethod.Email) }
         }
         Spacer(Modifier.height(18.dp))
 
         OutlinedTextField(
             value = identifier, onValueChange = { identifier = it },
-            label = { Text(if (method == AuthMethod.Phone) "Phone number" else "Email") },
+            label = { Text(if (method == AuthMethod.Phone) tr("Номер телефона", "Phone number") else "Email") },
             placeholder = { Text(if (method == AuthMethod.Phone) "+1234567890" else "you@code.dev", color = TextMuted) },
             singleLine = true, colors = tf, modifier = Modifier.fillMaxWidth(),
             keyboardOptions = KeyboardOptions(
@@ -76,14 +76,14 @@ fun AuthIdentifierScreen(
         Spacer(Modifier.height(12.dp))
         OutlinedTextField(
             value = name, onValueChange = { name = it },
-            label = { Text("Display name") },
-            placeholder = { Text("How others see you", color = TextMuted) },
+            label = { Text(tr("Отображаемое имя", "Display name")) },
+            placeholder = { Text(tr("Так вас увидят другие", "How others see you"), color = TextMuted) },
             singleLine = true, colors = tf, modifier = Modifier.fillMaxWidth()
         )
 
         Spacer(Modifier.height(10.dp))
         Text(
-            if (advanced) "▾ Server settings" else "▸ Server settings",
+            if (advanced) "▾ " + tr("Настройки сервера", "Server settings") else "▸ " + tr("Настройки сервера", "Server settings"),
             color = TgAccent, fontSize = 13.sp,
             modifier = Modifier.clickable { advanced = !advanced }
         )
@@ -91,9 +91,9 @@ fun AuthIdentifierScreen(
             Spacer(Modifier.height(8.dp))
             OutlinedTextField(
                 value = server, onValueChange = { server = it; onServer(it) },
-                label = { Text("Server URL") }, singleLine = true, colors = tf,
+                label = { Text(tr("Адрес сервера", "Server URL")) }, singleLine = true, colors = tf,
                 placeholder = { Text("wss://your-server.example", color = TextMuted) },
-                supportingText = { Text("Self-hosted? Use ws://<host>:8080 (emulator: ws://10.0.2.2:8080)", color = TextMuted, fontSize = 11.sp) },
+                supportingText = { Text(tr("Для своего сервера: ws://<host>:8080 (эмулятор: ws://10.0.2.2:8080)", "Self-hosted? Use ws://<host>:8080 (emulator: ws://10.0.2.2:8080)"), color = TextMuted, fontSize = 11.sp) },
                 modifier = Modifier.fillMaxWidth()
             )
         }
@@ -112,7 +112,7 @@ fun AuthIdentifierScreen(
             colors = ButtonDefaults.buttonColors(containerColor = Blurple, disabledContainerColor = BgPanel)
         ) {
             if (busy) CircularProgressIndicator(Modifier.size(22.dp), color = TextPrimary, strokeWidth = 2.dp)
-            else Text("Send code", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+            else Text(tr("Отправить код", "Send code"), fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
         }
     }
 }

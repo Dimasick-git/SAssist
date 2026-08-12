@@ -14,6 +14,7 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
@@ -27,6 +28,7 @@ import dev.ryazha.sassist.ui.CodeScreen
 import dev.ryazha.sassist.ui.ProfileScreen
 import dev.ryazha.sassist.ui.PublicProfileScreen
 import dev.ryazha.sassist.ui.ScriptScreen
+import dev.ryazha.sassist.ui.LocalAppLanguage
 import dev.ryazha.sassist.ui.WelcomeScreen
 import dev.ryazha.sassist.ui.theme.BgDarkest
 import dev.ryazha.sassist.ui.theme.SAssistTheme
@@ -40,6 +42,7 @@ class MainActivity : ComponentActivity() {
                 val state by vm.state.collectAsState()
                 val voiceState by vm.voiceState.collectAsState()
 
+                CompositionLocalProvider(LocalAppLanguage provides state.language) {
                 BackHandler(enabled = state.stage != Stage.Welcome) {
                     when (state.stage) {
                         Stage.Chat -> vm.backToChats()
@@ -81,7 +84,8 @@ class MainActivity : ComponentActivity() {
                             presence = state.presenceByChannel, preview = { vm.lastPreview(it) },
                             onOpen = { vm.openChannel(it) }, onScripts = { vm.openScripts() },
                             onProfile = { vm.openProfile() },
-                            onLogout = { vm.logout() }, onServer = { vm.setServerUrl(it) }
+                            onLogout = { vm.logout() }, onServer = { vm.setServerUrl(it) },
+                            onLanguage = { vm.setLanguage(it) }
                         )
                         Stage.Chat -> ChatScreen(
                             channels = state.channels, currentChannel = state.currentChannel,
@@ -132,6 +136,7 @@ class MainActivity : ComponentActivity() {
                             onSend = { vm.send(it) }, onBack = { vm.closeScripts() }
                         )
                     }
+                }
                 }
             }
         }

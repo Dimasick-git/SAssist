@@ -80,15 +80,15 @@ fun ScriptScreen(
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(onClick = onBack) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = TextPrimary)
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = tr("Назад", "Back"), tint = TextPrimary)
             }
-            Text("Script console", color = TextPrimary, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+            Text(tr("Консоль скриптов", "Script console"), color = TextPrimary, fontSize = 17.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.weight(1f))
             Box(
                 Modifier.clip(RoundedCornerShape(10.dp)).background(if (running) TextMuted else OnlineGreen)
                     .clickable(enabled = !running) {
                         running = true
-                        out = "running…"
+                        out = tr("выполняется…", "running…")
                         scope.launch {
                             val result = withContext(Dispatchers.Default) {
                                 val host = ScriptHost(onSend = onSend, lastMessageText = lastMessage)
@@ -102,9 +102,9 @@ fun ScriptScreen(
                 contentAlignment = Alignment.Center
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Filled.PlayArrow, contentDescription = "Run", tint = Color.White)
+                    Icon(Icons.Filled.PlayArrow, contentDescription = tr("Запустить", "Run"), tint = Color.White)
                     Spacer(Modifier.width(4.dp))
-                    Text("Run", color = Color.White, fontWeight = FontWeight.Bold)
+                    Text(tr("Запуск", "Run"), color = Color.White, fontWeight = FontWeight.Bold)
                 }
             }
         }
@@ -135,14 +135,14 @@ fun ScriptScreen(
         )
 
         // output console
-        Text("OUTPUT", color = TextMuted, fontSize = 10.sp, fontWeight = FontWeight.Bold,
+        Text(tr("ВЫВОД", "OUTPUT"), color = TextMuted, fontSize = 10.sp, fontWeight = FontWeight.Bold,
             modifier = Modifier.padding(start = 16.dp, top = 12.dp, bottom = 4.dp))
         Box(
             Modifier.fillMaxWidth().weight(1f).padding(horizontal = 12.dp).clip(RoundedCornerShape(10.dp))
                 .background(CodeBg).padding(12.dp)
         ) {
             Text(
-                if (out.isEmpty()) "// run a script to see output here" else out,
+                if (out.isEmpty()) tr("// запустите скрипт, чтобы увидеть вывод здесь", "// run a script to see output here") else out,
                 color = if (out.startsWith("!!")) Color(0xFFED4245) else TextPrimary,
                 fontFamily = FontFamily.Monospace, fontSize = 13.sp,
                 modifier = Modifier.verticalScroll(rememberScrollState())
@@ -151,4 +151,3 @@ fun ScriptScreen(
         Spacer(Modifier.height(12.dp))
     }
 }
-

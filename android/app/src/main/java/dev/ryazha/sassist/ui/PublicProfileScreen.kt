@@ -31,8 +31,8 @@ fun PublicProfileScreen(profile: PublicProfileUi, mediaUrl: (String) -> String, 
     val bannerUrl = profile.bannerId.takeIf { it.isNotBlank() }?.let(mediaUrl)
     Column(Modifier.fillMaxSize().background(BgDarkest)) {
         Row(Modifier.fillMaxWidth().background(BgDark).padding(horizontal = 6.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = TextPrimary) }
-            Text("User profile", color = TextPrimary, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+            IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = tr("Назад", "Back"), tint = TextPrimary) }
+            Text(tr("Профиль пользователя", "User profile"), color = TextPrimary, fontSize = 17.sp, fontWeight = FontWeight.Bold)
         }
         if (profile.busy) LinearProgressIndicator(Modifier.fillMaxWidth(), color = Blurple, trackColor = BgPanel)
         profile.error?.let { Text(it, color = Color(0xFFED4245), modifier = Modifier.padding(16.dp)) }
@@ -40,10 +40,10 @@ fun PublicProfileScreen(profile: PublicProfileUi, mediaUrl: (String) -> String, 
             Card(Modifier.padding(16.dp).fillMaxWidth(), shape = RoundedCornerShape(16.dp), colors = CardDefaults.cardColors(containerColor = BgPanel)) {
                 Box(Modifier.fillMaxWidth()) {
                     Box(Modifier.fillMaxWidth().height(126.dp).background(accent)) {
-                        if (bannerUrl != null) AsyncImage(bannerUrl, "Profile banner", Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                        if (bannerUrl != null) AsyncImage(bannerUrl, tr("Баннер профиля", "Profile banner"), Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
                     }
                     Box(Modifier.padding(start = 18.dp, top = 78.dp).size(92.dp).clip(CircleShape).background(accent).border(5.dp, BgPanel, CircleShape), contentAlignment = Alignment.Center) {
-                        if (avatarUrl != null) AsyncImage(avatarUrl, "Profile avatar", Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                        if (avatarUrl != null) AsyncImage(avatarUrl, tr("Аватар профиля", "Profile avatar"), Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
                         else Text(profile.displayName.take(1).uppercase().ifBlank { "?" }, color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.Black)
                     }
                     Column(Modifier.padding(start = 18.dp, end = 18.dp, top = 180.dp, bottom = 18.dp)) {
@@ -52,7 +52,7 @@ fun PublicProfileScreen(profile: PublicProfileUi, mediaUrl: (String) -> String, 
                         if (profile.bio.isNotBlank()) Text(profile.bio, color = TextPrimary, fontSize = 14.sp, modifier = Modifier.padding(top = 14.dp))
                         Button(onClick = onMessage, modifier = Modifier.fillMaxWidth().padding(top = 20.dp), colors = ButtonDefaults.buttonColors(containerColor = Blurple)) {
                             Icon(Icons.Filled.Chat, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Text("  Message")
+                            Text("  " + tr("Написать", "Message"))
                         }
                     }
                 }

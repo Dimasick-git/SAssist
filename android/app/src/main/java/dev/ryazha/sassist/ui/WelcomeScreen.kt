@@ -46,7 +46,7 @@ fun WelcomeScreen(onStart: () -> Unit) {
             Text("SAssist", color = TextPrimary, fontSize = 42.sp, fontWeight = FontWeight.Black)
             Spacer(Modifier.height(10.dp))
             Text(
-                "Chat built for coders — encrypted, fast, yours.",
+                tr("Чат для разработчиков — зашифрованный, быстрый, ваш.", "Chat built for coders — encrypted, fast, yours."),
                 color = TextMuted, fontSize = 15.sp, textAlign = TextAlign.Center
             )
             Spacer(Modifier.height(54.dp))
@@ -55,9 +55,9 @@ fun WelcomeScreen(onStart: () -> Unit) {
                 modifier = Modifier.height(54.dp).fillMaxWidth(),
                 shape = RoundedCornerShape(16.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = Blurple)
-            ) { Text("Get started", fontSize = 17.sp, fontWeight = FontWeight.Bold, color = TextPrimary) }
+            ) { Text(tr("Начать", "Get started"), fontSize = 17.sp, fontWeight = FontWeight.Bold, color = TextPrimary) }
             Spacer(Modifier.height(14.dp))
-            Text("🔒 End-to-end encrypted", color = TextMuted, fontSize = 12.sp)
+            Text(tr("🔒 Сквозное шифрование", "🔒 End-to-end encrypted"), color = TextMuted, fontSize = 12.sp)
         }
     }
 }
