@@ -34,3 +34,4 @@
 - [x] Fix attachment rendering and retrieval when a server media URL returns HTTP 404, including a compact unavailable state and safe retry path.
 - [x] Repair the Android release test gate so the configured unit tests run without resolving the release task too early.
 - [x] Correct the JVM media-recovery unit test so it does not rely on Android's runtime JSON implementation.
+- [ ] Prepare and publish the verified v1.0.1 maintenance APK with concise Russian-first release notes.
