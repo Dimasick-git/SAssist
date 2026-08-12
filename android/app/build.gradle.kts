@@ -94,8 +94,10 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
 }
 
-// The repository workflow already invokes assembleRelease. Make that release
-// gate compile and execute local unit tests before it produces an APK.
-tasks.named("assembleRelease") {
-    dependsOn("testReleaseUnitTest")
+// The repository workflow already invokes assembleRelease. The Android plugin
+// creates variant tasks later, so attach the test gate when that task appears.
+tasks.configureEach {
+    if (name == "assembleRelease") {
+        dependsOn("testReleaseUnitTest")
+    }
 }

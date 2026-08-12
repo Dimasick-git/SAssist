@@ -32,3 +32,4 @@
 - [x] Add an in-app connection diagnostics panel with manual reconnect and an understandable recovery state for a sleeping public server.
 - [x] Improve queued media recovery with visible retry status and an actionable error message when a local attachment can no longer be read.
 - [x] Fix attachment rendering and retrieval when a server media URL returns HTTP 404, including a compact unavailable state and safe retry path.
+- [x] Repair the Android release test gate so the configured unit tests run without resolving the release task too early.
