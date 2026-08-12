@@ -1,5 +1,9 @@
 # Deployment Status
 
+## Current release
+
+The Android client release is `v1.0.2` (`versionCode 3`). The default backend endpoint is `wss://sassist-labs.onrender.com`.
+
 ## English — short status
 
 The public test backend is live at `https://sassist-labs.onrender.com` and `wss://sassist-labs.onrender.com`. It is a Render Free deployment. Health, DM/call signalling and raw media transport smoke checks have passed.
@@ -9,6 +13,10 @@ The service is not persistent: Render Free can sleep and its filesystem is ephem
 ---
 
 # Статус deployment на русском
+
+## Текущий релиз
+
+Android-клиент: `v1.0.2`, `versionCode 3`. Адрес backend по умолчанию: `wss://sassist-labs.onrender.com`.
 
 ## Активный публичный backend
 
