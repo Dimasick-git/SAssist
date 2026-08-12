@@ -1,6 +1,7 @@
 package dev.ryazha.sassist.ui
 
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
@@ -60,7 +61,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.clickable
 import androidx.compose.material3.DropdownMenu
-import coil.compose.AsyncImage
+import coil.compose.AsyncImagePainter
+import coil.compose.rememberAsyncImagePainter
 import dev.ryazha.sassist.model.ChatMessage
 import dev.ryazha.sassist.ui.theme.Blurple
 import dev.ryazha.sassist.ui.theme.BgInput
@@ -154,6 +156,7 @@ fun MessageView(
     onReact: (String, String) -> Unit = { _, _ -> },
     onReply: (ChatMessage) -> Unit = {},
     onRetry: (String) -> Unit = {},
+    onRecoverAttachment: (String) -> Unit = {},
     onOpenProfile: (ChatMessage) -> Unit = {}
 ) {
     // Don't render empty bubbles: a message with no text, no media and no reply
@@ -167,6 +170,7 @@ fun MessageView(
     var menuOpen by remember { mutableStateOf(false) }
     var videoUrl by remember { mutableStateOf<String?>(null) }
     var readersOpen by remember { mutableStateOf(false) }
+    var attachmentUnavailable by remember(msg.id) { mutableStateOf(false) }
     val mine = myUserId.isNotBlank() && msg.userId == myUserId
     val bubbleColor = if (mine) Blurple else BgPanel
     val bubbleShape = RoundedCornerShape(
@@ -177,7 +181,10 @@ fun MessageView(
     )
     fun openExternalAttachment(url: String, name: String, mime: String) {
         scope.launch {
-            MediaOpener.open(context, url, name, mime)?.let { Toast.makeText(context, it, Toast.LENGTH_SHORT).show() }
+            MediaOpener.open(context, url, name, mime)?.let { error ->
+                if (error.contains("HTTP 404")) attachmentUnavailable = true
+                Toast.makeText(context, error, Toast.LENGTH_SHORT).show()
+            }
         }
     }
 
@@ -223,21 +230,31 @@ fun MessageView(
 
             msg.media?.let { media ->
                 val url = mediaUrl(media.id)
+                val canRecover = mine && msg.hasLocalMediaBackup
+                val missing = media.id.isBlank() || attachmentUnavailable
                 when (media.kind) {
-                    "image" -> AsyncImage(
-                        model = url,
-                        contentDescription = media.name,
-                        modifier = Modifier.padding(top = 4.dp).widthIn(max = 280.dp).heightIn(max = 340.dp)
-                            .clip(RoundedCornerShape(12.dp)).clickable { openExternalAttachment(url, media.name, media.mime) }
-                    )
-                    "audio" -> VoiceBubble(
+                    "image" -> {
+                        val painter = rememberAsyncImagePainter(model = url)
+                        if (missing || painter.state is AsyncImagePainter.State.Error) {
+                            UnavailableAttachment(media.name, mine, msg.isPending, msg.isFailed, canRecover) { onRecoverAttachment(msg.id) }
+                        } else Image(
+                            painter = painter, contentDescription = media.name,
+                            modifier = Modifier.padding(top = 4.dp).widthIn(max = 280.dp).heightIn(max = 340.dp)
+                                .clip(RoundedCornerShape(12.dp)).clickable { openExternalAttachment(url, media.name, media.mime) }
+                        )
+                    }
+                    "audio" -> if (missing) {
+                        UnavailableAttachment(media.name, mine, msg.isPending, msg.isFailed, canRecover) { onRecoverAttachment(msg.id) }
+                    } else VoiceBubble(
                         mine = mine,
                         durationMs = media.durationMs ?: 0L,
                         playing = voiceState.messageId == msg.id && voiceState.playing,
                         progress = if (voiceState.messageId == msg.id) voiceState.progress else 0f,
                         onToggle = { onToggleVoice(msg.id, url) }
                     )
-                    "video" -> Box(
+                    "video" -> if (missing) {
+                        UnavailableAttachment(media.name, mine, msg.isPending, msg.isFailed, canRecover) { onRecoverAttachment(msg.id) }
+                    } else Box(
                         Modifier.padding(top = 4.dp).widthIn(max = 280.dp).height(170.dp)
                             .clip(RoundedCornerShape(12.dp)).background(Color.Black)
                             .clickable { videoUrl = url },
@@ -252,7 +269,9 @@ fun MessageView(
                                     .clip(RoundedCornerShape(6.dp)).background(Color.Black.copy(alpha = 0.5f)).padding(horizontal = 5.dp, vertical = 1.dp))
                         }
                     }
-                    else -> Row(
+                    else -> if (missing) {
+                        UnavailableAttachment(media.name, mine, msg.isPending, msg.isFailed, canRecover) { onRecoverAttachment(msg.id) }
+                    } else Row(
                         Modifier.padding(top = 4.dp).clip(RoundedCornerShape(12.dp))
                             .background(if (mine) Color.White.copy(alpha = 0.14f) else BgInput)
                             .clickable { openExternalAttachment(url, media.name, media.mime) }
@@ -350,6 +369,48 @@ fun MessageView(
                 else msg.readBy.forEach { uid ->
                     Text("✓✓ " + nameOf(uid), color = TextPrimary, fontSize = 14.sp, modifier = Modifier.padding(vertical = 3.dp))
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun UnavailableAttachment(
+    name: String,
+    mine: Boolean,
+    pending: Boolean,
+    failed: Boolean,
+    canRecover: Boolean,
+    onRecover: () -> Unit
+) {
+    val title = when {
+        pending -> tr("Файл ожидает отправки", "Attachment is waiting to send")
+        failed -> tr("Не удалось отправить файл", "Attachment could not be sent")
+        else -> tr("Вложение недоступно", "Attachment unavailable")
+    }
+    val detail = when {
+        pending -> tr("Будет отправлено после подключения.", "It will send when a connection is available.")
+        failed -> tr("Выберите файл заново или нажмите повторную отправку ниже.", "Select the file again or use retry below.")
+        canRecover -> tr("Файл больше нет на сервере. Локальная копия доступна.", "The server no longer has this file. A local copy is available.")
+        else -> tr("Файл больше нет на сервере.", "The server no longer has this file.")
+    }
+    Row(
+        Modifier.padding(top = 4.dp).widthIn(min = 190.dp, max = 280.dp)
+            .clip(RoundedCornerShape(12.dp)).background(if (mine) Color.White.copy(alpha = 0.14f) else BgInput)
+            .padding(horizontal = 10.dp, vertical = 9.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(Icons.Filled.ErrorOutline, contentDescription = null, tint = Color(0xFFFAA61A), modifier = Modifier.size(22.dp))
+        Spacer(Modifier.width(8.dp))
+        Column(Modifier.weight(1f)) {
+            Text(title, color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+            Text(name, color = if (mine) TextPrimary.copy(alpha = 0.78f) else TextMuted, fontSize = 11.sp, maxLines = 1)
+            Text(detail, color = if (mine) TextPrimary.copy(alpha = 0.78f) else TextMuted, fontSize = 11.sp)
+            if (canRecover && !pending && !failed) {
+                Text(
+                    tr("Отправить копию ещё раз", "Send a new copy"), color = TgAccent, fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 5.dp).clickable { onRecover() }
+                )
             }
         }
     }

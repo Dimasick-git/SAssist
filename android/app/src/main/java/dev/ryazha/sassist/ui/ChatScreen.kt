@@ -78,6 +78,7 @@ fun ChatScreen(
     replyingTo: ChatMessage?,
     uploadBusy: Boolean,
     uploadProgress: Int?,
+    attachmentNotice: String?,
     hasCustomKey: Boolean,
     recording: Boolean,
     recordingStartedAt: Long,
@@ -94,6 +95,8 @@ fun ChatScreen(
     onOpenUserProfile: (ChatMessage) -> Unit,
     onCancelReply: () -> Unit,
     onRetry: (String) -> Unit,
+    onRecoverAttachment: (String) -> Unit,
+    onClearAttachmentNotice: () -> Unit,
     onToggleVoice: (String, String) -> Unit,
     onStartVoice: () -> Unit,
     onStopVoice: () -> Unit,
@@ -119,6 +122,12 @@ fun ChatScreen(
         if (uri != null) onSendMedia(uri)
     }
     val context = androidx.compose.ui.platform.LocalContext.current
+    LaunchedEffect(attachmentNotice) {
+        if (attachmentNotice != null) {
+            android.widget.Toast.makeText(context, attachmentNotice, android.widget.Toast.LENGTH_LONG).show()
+            onClearAttachmentNotice()
+        }
+    }
     var hasAudioPerm by remember {
         mutableStateOf(
             androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.RECORD_AUDIO) ==
@@ -223,7 +232,8 @@ fun ChatScreen(
                         msg = msg, myUserId = myUserId, mediaUrl = mediaUrl,
                         findMessage = { byId[it] },
                         voiceState = voiceState, onToggleVoice = onToggleVoice, nameOf = nameOf,
-                        onReact = onReact, onReply = onReply, onRetry = onRetry, onOpenProfile = onOpenUserProfile
+                        onReact = onReact, onReply = onReply, onRetry = onRetry,
+                        onRecoverAttachment = onRecoverAttachment, onOpenProfile = onOpenUserProfile
                     )
                 }
             }

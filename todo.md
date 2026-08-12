@@ -18,8 +18,8 @@
 - [x] Apply the SAssist Labs organization name consistently to Android-facing branding and server documentation.
 - [x] Prepare provider-ready configuration and deployment documentation for a free no-card SAssist Labs backend.
 - [x] Reconfigure the deployment path for a free no-card tier and document its non-persistent storage limitation.
-- [ ] Diagnose and fix the Android login connection timeout to `sassist-labs.onrender.com:443`, then rebuild and verify the release APK.
-- [ ] Diagnose and fix the Android post-login WebSocket stall that leaves the channel list in `Connecting…`.
+- [x] Diagnose and fix the Android login connection timeout to `sassist-labs.onrender.com:443`, then rebuild and verify the release APK.
+- [x] Diagnose and fix the Android post-login WebSocket stall that leaves the channel list in `Connecting…`.
 - [x] Add a persistent Russian-default language setting, an English switch, and localized Android interface/error strings.
 - [x] Show the selected profile avatar in the main channel menu with an initials fallback.
 - [x] Add nearby offline Bluetooth message delivery with explicit pairing, runtime permissions, encrypted payloads, and queued server reconciliation.
@@ -29,3 +29,6 @@
 - [x] Document the public backend architecture, operational limits, and practical upgrade path for persistent media storage.
 - [x] Publish a v1.0.0 GitHub release with the verified APK and user-facing Russian release notes.
 - [x] Rewrite README and key documentation with a concise English section followed by complete Russian installation and operation guidance.
+- [ ] Add an in-app connection diagnostics panel with manual reconnect and an understandable recovery state for a sleeping public server.
+- [x] Improve queued media recovery with visible retry status and an actionable error message when a local attachment can no longer be read.
+- [x] Fix attachment rendering and retrieval when a server media URL returns HTTP 404, including a compact unavailable state and safe retry path.

@@ -52,8 +52,12 @@ interface MessageDao {
     /** Server echo arrived: replace the optimistic local row with the server copy. */
     @Transaction
     suspend fun reconcile(clientId: String, serverMsg: LocalMessage) {
+        // Keep the original URI on the sender's own device after an upload succeeds.
+        // It lets the sender publish a fresh copy if a free server has restarted and
+        // the old transient media file now returns HTTP 404.
+        val localBackup = getByClientId(clientId)?.localMediaUri
         deleteByClientId(clientId)
-        insert(serverMsg)
+        insert(serverMsg.copy(localMediaUri = localBackup))
     }
 
     @Query("SELECT * FROM messages WHERE isPending = 1 ORDER BY ts ASC")

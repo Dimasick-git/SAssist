@@ -374,6 +374,16 @@ wss.on("connection", (ws) => {
         const text = ((msg as any).text || "").slice(0, 8000);
         const media: MediaRef | undefined = (msg as any).media;
         if (!text.trim() && !media) break;
+        if (media) {
+          const mediaId = ("" + (media.id || "")).replace(/[^a-zA-Z0-9_]/g, "");
+          const savedMeta = path.join(MEDIA_DIR, mediaId + ".json");
+          const savedBytes = path.join(MEDIA_DIR, mediaId + ".bin");
+          // Do not persist a message pointing at a missing or placeholder upload.
+          // This turns a broken media bubble into a retryable local send instead.
+          if (!mediaId || !fs.existsSync(savedMeta) || !fs.existsSync(savedBytes)) {
+            send(ws, { type: "error", reason: "attachment unavailable; upload it again" }); break;
+          }
+        }
         const clientId = ("" + ((msg as any).clientId || "")).slice(0, 64) || undefined;
         const pub = publicOf(client.id);
         const message: ChatMessage = {

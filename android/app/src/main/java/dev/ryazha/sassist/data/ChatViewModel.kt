@@ -117,7 +117,8 @@ data class ChatState(
     val recordingStartedAt: Long = 0L,
     val nearby: NearbyUi = NearbyUi(),
     val call: CallUi? = null,
-    val namesById: Map<String, String> = emptyMap()
+    val namesById: Map<String, String> = emptyMap(),
+    val attachmentNotice: String? = null
 ) {
     val messages: List<ChatMessage> get() = messagesByChannel[currentChannel] ?: emptyList()
     val presence: Int get() = presenceByChannel[currentChannel] ?: 0
@@ -735,6 +736,32 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** Re-upload a sender-owned source file after the public server no longer has it. */
+    fun recoverAttachment(id: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val source = messageDao.getById(id)?.localMediaUri
+            if (source.isNullOrBlank()) {
+                showAttachmentNotice("Исходный файл больше недоступен на этом устройстве.", "The original file is no longer available on this device.")
+                return@launch
+            }
+            val uri = Uri.parse(source)
+            val readable = runCatching {
+                getApplication<Application>().contentResolver.openInputStream(uri)?.use { it.read() } != null
+            }.getOrDefault(false)
+            if (!readable) {
+                showAttachmentNotice("Исходный файл больше нельзя прочитать. Выберите его заново и отправьте повторно.", "The original file can no longer be read. Select it again and send it once more.")
+                return@launch
+            }
+            withContext(Dispatchers.Main) { sendMedia(uri) }
+        }
+    }
+
+    fun clearAttachmentNotice() { _state.update { it.copy(attachmentNotice = null) } }
+
+    private fun showAttachmentNotice(russian: String, english: String) {
+        _state.update { it.copy(attachmentNotice = if (it.language == AppLanguage.Russian) russian else english) }
+    }
+
     /** Flush the send queue from the background when connectivity returns. */
     fun scheduleBackgroundFlush() {
         val work = OneTimeWorkRequestBuilder<SendQueueWorker>()
@@ -793,7 +820,9 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                     if (r.media != null) {
                         withContext(Dispatchers.Main) {
                             _state.update { it.copy(uploadBusy = false, uploadProgress = null) }
-                            enqueueAndSend(text = "", media = r.media)
+                            // Retain the source URI on the sender's own device. The server only
+                            // receives the uploaded media ID; this URI is never transmitted.
+                            enqueueAndSend(text = "", media = r.media, localUri = uri.toString())
                         }
                         return@launch
                     }
@@ -1088,7 +1117,8 @@ fun LocalMessage.toChatMessage(): ChatMessage = ChatMessage(
     replyTo = replyTo,
     reactions = reactionsJson?.let { jsonToReactions(it) } ?: emptyMap(),
     readBy = readByJson?.let { jsonToStringList(it) } ?: emptyList(),
-    isPending = isPending, isFailed = isFailed
+    isPending = isPending, isFailed = isFailed,
+    hasLocalMediaBackup = !localMediaUri.isNullOrBlank()
 )
 
 fun mediaRefToJson(m: MediaRef): JSONObject = JSONObject()

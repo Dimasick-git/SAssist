@@ -30,7 +30,9 @@ data class ChatMessage(
     val reactions: Map<String, List<String>> = emptyMap(),
     val readBy: List<String> = emptyList(),
     val isPending: Boolean = false,
-    val isFailed: Boolean = false
+    val isFailed: Boolean = false,
+    /** True only for this device's own attachment when its original URI can be re-uploaded. */
+    val hasLocalMediaBackup: Boolean = false
 )
 
 enum class ConnState { Disconnected, Connecting, Connected, Error }

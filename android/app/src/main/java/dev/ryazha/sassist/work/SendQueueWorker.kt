@@ -49,11 +49,16 @@ class SendQueueWorker(context: Context, params: WorkerParameters) : CoroutineWor
         if (sendable.isEmpty()) return Result.success()
 
         // 1. Upload missing media
-        for (i in sendable.indices) {
+        for (i in sendable.indices.reversed()) {
             val m = sendable[i]
-            if (m.localMediaUri != null && m.mediaJson != null) {
+            if (m.mediaJson != null) {
                 val partial = try { JSONObject(m.mediaJson) } catch (e: Exception) { null }
-                if (partial != null && !partial.has("id")) {
+                if (partial != null && partial.optString("id").isBlank()) {
+                    if (m.localMediaUri == null) {
+                        dao.markFailed(m.id)
+                        sendable.removeAt(i)
+                        continue
+                    }
                     try {
                         val uri = Uri.parse(m.localMediaUri)
                         val size = applicationContext.contentResolver.openAssetFileDescriptor(uri, "r")?.use { it.length } ?: -1L
@@ -73,11 +78,20 @@ class SendQueueWorker(context: Context, params: WorkerParameters) : CoroutineWor
                             val updated = m.copy(mediaJson = updatedJson.toString(), localMediaUri = null)
                             dao.insert(updated)
                             sendable[i] = updated
+                        } else {
+                            // Never publish a placeholder with an empty media ID. It cannot be
+                            // downloaded and previously produced the empty blue message bubble.
+                            dao.markFailed(m.id)
+                            sendable.removeAt(i)
                         }
-                    } catch (e: Exception) { /* skip */ }
+                    } catch (e: Exception) {
+                        dao.markFailed(m.id)
+                        sendable.removeAt(i)
+                    }
                 }
             }
         }
+        if (sendable.isEmpty()) return Result.success()
 
         if (url.startsWith("http")) url = url.replace("http://", "ws://").replace("https://", "wss://")
         if (!url.contains("://")) url = "wss://$url"
