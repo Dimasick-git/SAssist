@@ -113,6 +113,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     private var client: ChatClient? = null
     private var messageJob: Job? = null
     private var reconnectJob: Job? = null
+    private var welcomeTimeoutJob: Job? = null
     private var backoffMs = 1_000L
 
     private val recorder = VoiceRecorder(app)
@@ -125,6 +126,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     companion object {
         private const val MAX_SEND_ATTEMPTS = 5
         private const val BACKOFF_MAX_MS = 30_000L
+        private const val WELCOME_TIMEOUT_MS = 95_000L
     }
 
     init {
@@ -253,26 +255,45 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
             url = "wss://$url"
         }
 
-        val c = ChatClient(
+        lateinit var c: ChatClient
+        c = ChatClient(
             onOpen = {
-                client?.send(JSONObject().put("type", "join").put("token", token).toString())
+                // Do not let an old socket authenticate after a forced reconnect.
+                if (client === c) c.send(JSONObject().put("type", "join").put("token", token).toString())
             },
-            onText = { handle(it) },
+            onText = { if (client === c) handle(it) },
             onClosed = {
-                _state.update { it.copy(connState = ConnState.Disconnected) }
-                scheduleReconnect()
+                if (client === c) {
+                    welcomeTimeoutJob?.cancel()
+                    client = null
+                    _state.update { it.copy(connState = ConnState.Disconnected) }
+                    scheduleReconnect()
+                }
             },
             onFailure = {
-                _state.update { it.copy(connState = ConnState.Error) }
-                scheduleReconnect()
+                if (client === c) {
+                    welcomeTimeoutJob?.cancel()
+                    client = null
+                    _state.update { it.copy(connState = ConnState.Error) }
+                    scheduleReconnect()
+                }
             }
         )
         client = c
         c.connect(url)
+
+        // An established TCP/WebSocket connection without a `welcome` must not leave
+        // the channel list in Connecting forever (for example after a proxy wake-up).
+        welcomeTimeoutJob?.cancel()
+        welcomeTimeoutJob = viewModelScope.launch {
+            delay(WELCOME_TIMEOUT_MS)
+            if (client === c && _state.value.connState == ConnState.Connecting) {
+                c.close()
+            }
+        }
     }
 
     private fun scheduleReconnect() {
-        client = null
         if (session.token == null) return
         reconnectJob?.cancel()
         val delayMs = backoffMs + Random.nextLong(0, backoffMs / 2 + 1)
@@ -351,6 +372,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         val o = try { JSONObject(raw) } catch (e: Exception) { return }
         when (o.optString("type")) {
             "welcome" -> {
+                welcomeTimeoutJob?.cancel()
                 backoffMs = 1_000L
                 val chans = jsonStrings(o.optJSONArray("channels"))
                 val user = o.optJSONObject("user")
