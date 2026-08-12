@@ -1,7 +1,13 @@
 # SAssist Labs
 
-**SAssist** is the real-time messaging and scripting application maintained by **Dimasick-git** under the SAssist Labs organization identity.
+## English — short note
 
-The Android client and the companion WebSocket backend are designed as one project. The service name used for the free Render Blueprint is `sassist-labs`; the application label remains **SAssist** so existing users retain a familiar app name.
+SAssist is maintained by **Dimasick-git** under the **SAssist Labs** identity. The Android application is named **SAssist** and its public test backend is `sassist-labs`.
 
-> Free Render mode is intended for functional testing. It can stop after idle time and its local storage is reset after a restart or redeploy, so it must not be treated as permanent storage for profile images, banner images, media, or message history.
+---
+
+# SAssist Labs — на русском
+
+SAssist поддерживается владельцем репозитория **Dimasick-git** под именем **SAssist Labs**. Название Android-приложения остаётся **SAssist**, а имя публичного тестового Render-сервиса — `sassist-labs`.
+
+Публичный Render Free backend подходит для проверки функций, но не является постоянным хранилищем. Для стабильного сервиса нужны persistent database и object storage; подробности указаны в [server/README.md](server/README.md).

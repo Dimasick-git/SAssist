@@ -25,7 +25,7 @@
 - [x] Add nearby offline Bluetooth message delivery with explicit pairing, runtime permissions, encrypted payloads, and queued server reconciliation.
 - [x] Add nearby offline file transfer with explicit recipient pairing, per-transfer progress, local sharing URI access, and no file bytes sent through the server.
 - [x] Add Telegram/Discord-style private audio and video calls with signalling, call controls, runtime media permissions, and reconnect-safe call state.
-- [ ] Reduce photo and video upload/download latency through client-side compression, streaming-friendly transport, and responsive media rendering.
-- [ ] Document the public backend architecture, operational limits, and practical upgrade path for persistent media storage.
+- [x] Reduce photo and video upload/download latency through client-side compression, streaming-friendly transport, and responsive media rendering.
+- [x] Document the public backend architecture, operational limits, and practical upgrade path for persistent media storage.
 - [ ] Publish a v1.0.0 GitHub release with the verified APK and user-facing Russian release notes.
-- [ ] Rewrite README and key documentation with a concise English section followed by complete Russian installation and operation guidance.
+- [x] Rewrite README and key documentation with a concise English section followed by complete Russian installation and operation guidance.

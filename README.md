@@ -1,46 +1,107 @@
 # SAssist
 
-Self-hostable coder messenger: Android (Jetpack Compose) client + tiny
-Node.js/TypeScript server (WebSocket + REST, SQLite).
+## English — short guide
 
-- **Works out of the box** — `docker compose up -d --build` gives a fully
-  working server: durable users/messages/media, login without any external
-  services (OTP codes are shown in the app until you configure SMTP/Twilio).
-- **Offline-first client** — local Room cache, offline send queue with
-  exactly-once delivery, background flush via WorkManager, incremental
-  history sync after reconnect.
-- **E2EE text** (AES-256-GCM, per-room passphrases), media attachments,
-  replies, reactions, typing/presence, premium @usernames, profiles, and an
-  embedded JavaScript script console.
+**SAssist** is an Android messenger with a Node.js/TypeScript backend. It includes real-time channels and private messages, offline Room cache and send queue, profiles with avatar and banner, media attachments, nearby offline sharing, and private audio/video calls.
 
-| Part | Docs |
+The public test server is **`wss://sassist-labs.onrender.com`**. Install the APK from the latest GitHub Release or build the Android project with `./gradlew :app:assembleDebug`. For self-hosting, run `docker compose up -d --build` and point the app to `ws://<host>:8080`.
+
+| Component | Documentation |
 |---|---|
-| Server (run, deploy, env vars) | [server/README.md](server/README.md) |
-| Wire protocol v1 | [server/PROTOCOL.md](server/PROTOCOL.md) |
-| Android app (build, offline, E2EE) | [android/README.md](android/README.md) |
+| Android client | [android/README.md](android/README.md) |
+| Server and deployment | [server/README.md](server/README.md) |
+| REST/WebSocket protocol | [server/PROTOCOL.md](server/PROTOCOL.md) |
+| Current public deployment | [DEPLOYMENT_STATUS.md](DEPLOYMENT_STATUS.md) |
 
-## Quick start
+> The public Render Free server may sleep after inactivity and does not provide persistent disk storage. It is appropriate for testing, not long-term storage of media or database data.
+
+---
+
+# SAssist — полная документация на русском
+
+## Что это
+
+**SAssist** — Android-мессенджер с собственным сервером. Приложение работает с каналами `general`, `code-help`, `showtime`, личными чатами, профилями, файлами, офлайн-очередью и инструментами для скриптов. Обычные функции профиля и чата доступны всем пользователям.
+
+| Возможность | Что сделано |
+|---|---|
+| Сообщения | Каналы, личные чаты, ответы, реакции, статус прочтения, typing и online presence. |
+| Офлайн | История хранится локально в Room; несданные сообщения автоматически уходят после появления сети. |
+| Профиль | Аватар, баннер, отображаемое имя, `@username`, биография и цвет. Выбранный аватар показан в главном меню. |
+| Медиа | Фото, видео, аудио и файлы до **30 МБ**. Фото уменьшаются на устройстве перед отправкой; загрузка идёт потоком без base64. |
+| Bluetooth рядом | Текст и файлы передаются между рядом находящимися телефонами SAssist с ручным подтверждением пары; сервер для самих байтов файлов не используется. |
+| Звонки | Аудио- и видеозвонки только в личных чатах. Есть входящий вызов, принять/отклонить, микрофон, камера и завершение. |
+| Шифрование | Текст личного или обычного чата можно шифровать ключом комнаты AES-256-GCM. Signalling звонка в DM передаётся в зашифрованном виде. Медиафайлы не являются E2EE. |
+
+## Установка APK
+
+1. Откройте страницу **Releases** в репозитории и скачайте `app-release.apk` из версии `v1.0.0` или новее.
+2. На Android разрешите установку приложений из выбранного браузера или файлового менеджера.
+3. Если система отказывается обновлять старую тестовую сборку, удалите её и установите APK заново: сборки CI могут иметь другой ключ подписи.
+4. Запустите SAssist, зарегистрируйтесь по e-mail или телефону и при необходимости откройте **Настройки сервера** на экране входа.
+
+Стандартный адрес приложения: **`wss://sassist-labs.onrender.com`**.
+
+## Вход и регистрация
+
+Сервер использует одноразовый код. При корректно настроенной почте/SMS код отправляется пользователю. На локальном сервере без настроенной доставки код может отображаться в приложении только для разработки. Для публичного использования необходимо настроить SMTP или SMS-провайдера и включить `DISABLE_DEV_CODE=1`.
+
+## Медиа: почему раньше было долго и что изменено
+
+Раньше приложение полностью читало файл в память, превращало его в base64 и отправляло внутри JSON. Это увеличивало размер данных примерно на треть и требовало лишней обработки на телефоне и сервере. Теперь фото передаются после уменьшения до разумного размера, а файлы и видео отправляются бинарным потоком через `/upload/raw`. Интерфейс показывает процент загрузки.
+
+Сервер поддерживает HTTP `Range`, поэтому видео может начать воспроизводиться и перематываться без ожидания всей загрузки. Скорость всё равно зависит от мобильной сети, размера исходного файла и состояния free-сервера.
+
+## Сообщения и файлы без интернета
+
+Откройте в списке каналов **⋮ → Bluetooth рядом → Включить** на обоих устройствах. Android запросит системные разрешения Bluetooth. После обнаружения устройства нажмите **«Сопрячь»** на одном телефоне и **«Принять»** на другом.
+
+После соединения текстовые сообщения передаются напрямую. Для файла нажмите **«Выбрать и отправить файл»** в том же окне. Получатель видит прогресс и может открыть файл через обычное меню выбора Android-приложения. Nearby Connections выбирает доступный локальный транспорт: Bluetooth, BLE или Wi‑Fi Direct. Оба телефона должны находиться рядом и иметь установленный SAssist.
+
+## Аудио и видеозвонки
+
+Кнопки трубки и камеры появляются только в личном чате. При первом звонке Android запросит доступ к микрофону, а для видео — ещё и к камере. Медиа идут по WebRTC; сервер используется только для передачи зашифрованных служебных кадров между участниками DM.
+
+> В некоторых мобильных сетях или за строгим NAT прямой WebRTC-звонок может не установиться. Для гарантированной связи в таких сетях понадобится отдельный TURN-релей. Он не входит в бесплатный Render backend.
+
+## Публичный сервер и его ограничения
+
+| Параметр | Текущее состояние |
+|---|---|
+| Адрес | `https://sassist-labs.onrender.com` / `wss://sassist-labs.onrender.com` |
+| Платформа | Render Free, без банковской карты. |
+| Сон | После простоя инстанс может заснуть. Первый запрос после этого иногда занимает до минуты. |
+| Хранилище | Файловая система ephemeral: после redeploy или холодного перезапуска SQLite-данные и медиа могут исчезнуть. |
+| Лимит файла | 30 МБ на одну загрузку. |
+| Для постоянного проекта | Нужны постоянная БД и object storage (например, S3/R2/B2), а для сложных сетей звонков — TURN. |
+
+Для собственного постоянного сервера используйте Docker и постоянный `DATA_DIR`. Подробности — в [server/README.md](server/README.md).
+
+## Локальный запуск для разработки
+
 ```bash
-# 1. server
-docker compose up -d --build          # -> ws://<host>:8080
+# В корне репозитория: сервер с SQLite и постоянным Docker volume
+docker compose up -d --build
 
-# 2. app
-cd android && ./gradlew :app:assembleDebug
-# install the APK, then: Sign in -> Server settings -> ws://<host>:8080
+# Android debug APK
+cd android
+./gradlew :app:assembleDebug
 ```
 
-## Free hosting
+На Android-эмуляторе укажите `ws://10.0.2.2:8080`. На физическом телефоне используйте локальный IP компьютера в вашей Wi‑Fi сети, например `ws://192.168.1.10:8080`.
 
-| Option | Card? | Sleeps? | Keeps data? | Guide |
-|---|---|---|---|---|
-| **alwaysdata** (free 100 MB) | **No** | No | **Yes** (persistent FS) | [server/DEPLOY-alwaysdata.md](server/DEPLOY-alwaysdata.md) |
-| Oracle Cloud Always Free (VM) | Yes (once, no charge) | No | Yes | `docker compose up -d --build` on the VM |
-| Render (free) | No | Yes (15 min idle) | No (resets) | `render.yaml` blueprint |
-| Fly.io | Yes | No | Yes | `fly.toml` |
+## Проверки
 
-**Recommended free-forever, no-card, keeps data: alwaysdata** — runs the Node
-WebSocket server on a persistent 100 MB plan. Follow
-[server/DEPLOY-alwaysdata.md](server/DEPLOY-alwaysdata.md).
+GitHub Actions собирает release APK. Backend покрыт smoke-проверками OTP, профилей, DM, call signalling, raw media upload и Range-выдачи. Перед выпуском проверяются локальный сервер, публичный backend и Android release build.
 
-CI builds the APK and runs the server smoke tests (including a
-restart-persistence check) on every push.
+## Структура репозитория
+
+| Путь | Назначение |
+|---|---|
+| `android/` | Kotlin/Jetpack Compose клиент. |
+| `server/` | Node.js/TypeScript, WebSocket, REST, SQLite и хранение медиа. |
+| `docker-compose.yml` | Локальный/self-host запуск с постоянным volume. |
+| `render.yaml` | Blueprint публичного тестового Render backend. |
+| `.github/workflows/` | Автоматическая Android-сборка. |
+
+Лицензия и условия использования определяются владельцем репозитория.

@@ -1,63 +1,83 @@
-# SAssist server
+# SAssist Server
 
-Coder-focused chat backend. **WebSocket + JSON** for chat, small REST surface
-for auth/profile/media. All durable state (users, messages, reactions, auth
-secret) lives in SQLite under `DATA_DIR` — restarts and redeploys lose nothing.
+## English — short guide
 
-## Run locally
+The server is Node.js/TypeScript with WebSocket, a small REST API and SQLite. Run locally with `npm install && npm run dev`, or use Docker from the repository root: `docker compose up -d --build`.
+
+Persistent operation requires a writable persistent `DATA_DIR`. The public Render instance is a free test deployment and does not retain disk data reliably.
+
+---
+
+# Сервер SAssist — русская инструкция
+
+## Назначение
+
+Сервер обслуживает регистрацию по одноразовому коду, профили, медиа, WebSocket-чаты, DM, presence, реакции, историю и signalling звонков. Все долговечные данные self-host варианта лежат в SQLite и каталоге `DATA_DIR`.
+
+## Запуск
+
 ```bash
+cd server
 npm install
-npm run dev      # hot-reload on :8080
-# or
-npm run build && npm start
+npm run dev
+
+# или production-путь
+npm run build
+npm start
 ```
 
-Health check: `GET http://localhost:8080/health` → `SAssist server ok`
+Health check: `GET /health` возвращает `SAssist server ok`.
 
-## Self-host with Docker (recommended)
+## Docker
+
+Из корня репозитория:
+
 ```bash
-docker compose up -d --build     # from the repo root
+docker compose up -d --build
 ```
-Server on `:8080`, data in the `sassist_data` volume. Use `ws://<host>:8080`
-as the server URL in the app.
 
-**Login works out of the box**: with no SMTP/Twilio configured, the one-time
-code is returned to the app and shown on the code screen. Configure delivery
-(below) to send real emails/SMS instead.
+Контейнер слушает `8080`, а постоянные данные хранятся в Docker volume. Это рекомендуемый вариант для собственного сервера.
 
-## Environment variables
+## Переменные окружения
 
-| Var | Default | Purpose |
+| Переменная | Значение по умолчанию | Назначение |
 |---|---|---|
-| `PORT` | `8080` | listen port |
-| `HOST` | *(all interfaces)* | bind address. Set only if your host requires a specific IP (alwaysdata sets this automatically) |
-| `DATA_DIR` | `./data` (`/data` in Docker) | SQLite DB, media files, auth secret |
-| `AUTH_SECRET` | auto | token signing key. If unset, generated once and persisted to `DATA_DIR/auth_secret` — tokens survive restarts either way |
-| `PREMIUM_CODE` | *(off)* | legacy optional author-only marker; it does not gate normal SAssist functions |
-| `SMTP_HOST` `SMTP_PORT` `SMTP_USER` `SMTP_PASS` `SMTP_FROM` `SMTP_SECURE` | *(off)* | real e-mail OTP delivery |
-| `TWILIO_SID` `TWILIO_TOKEN` `TWILIO_FROM` | *(off)* | real SMS OTP delivery |
-| `DISABLE_DEV_CODE` | `0` | set `1` to refuse login when no delivery channel is configured (never return codes to clients) |
+| `PORT` | `8080` | Порт HTTP/WebSocket. |
+| `HOST` | все интерфейсы | IP привязки, нужен только на отдельных hosting-платформах. |
+| `DATA_DIR` | `./data` | SQLite, медиа и секрет подписи токенов. Должен быть постоянным. |
+| `AUTH_SECRET` | создаётся автоматически | Подпись токенов. Храните его вместе с `DATA_DIR`. |
+| `SMTP_*` | выключено | Реальная отправка OTP по e-mail. |
+| `TWILIO_*` | выключено | Реальная отправка OTP по SMS. |
+| `DISABLE_DEV_CODE` | `0` | Поставьте `1` на публичном сервере без dev-кодов. |
+| `PREMIUM_CODE` | выключено | Только marker для будущих author-only дополнений; обычные функции не блокирует. |
 
-Notes:
-- Configuring SMTP/Twilio **automatically disables** the returned `devCode`.
-- All valid `@username` lengths and all ordinary profile/chat capabilities are available to every user. The optional author code is reserved for future, explicitly author-only additions and must never be used to restrict ordinary functionality.
-- A configured-but-failing channel never falls back to `devCode`.
-- Legacy `users.json` (pre-SQLite) is imported automatically on first boot.
-- Backup = copy `DATA_DIR` (`sassist.db*`, `media/`, `auth_secret`).
+Без SMTP/SMS код может возвращаться клиенту только для разработки. В публичной установке настройте доставку и включите `DISABLE_DEV_CODE=1`.
 
-## Cloud deploys
-- **Koyeb Free Instance (default Android target)**: create a Web Service from this repo, choose root directory `server`, Dockerfile `Dockerfile`, port `8080`, and the free instance type. If the app is named `sassist` and the org is `dimasick-git`, Koyeb exposes `https://sassist-dimasick-git.koyeb.app`; the Android app uses `wss://sassist-dimasick-git.koyeb.app` by default. Free instances are good for hobby/testing use, have limited CPU/RAM/disk, and can sleep when idle.
-- **Fly.io**: `fly.toml` included, persistent volume at `/data`. `fly launch --no-deploy --copy-config`, `fly volumes create sassist_data --size 1 --region fra`, `fly deploy`. Set secrets with `fly secrets set PREMIUM_CODE=...`.
-- **Render**: `render.yaml` blueprint with a 1 GB disk at `/data` (starter plan — the free plan has no disk and loses data on redeploy).
+## Медиа API
 
-## Smoke test
+Новый быстрый путь — `POST /upload/raw` с заголовком `Authorization: Bearer <token>` и телом из исходных байтов файла. Параметры `mime`, `name`, `kind` и `durationMs` передаются в query string. Это устраняет накладные расходы base64. Старый `POST /upload` с JSON/base64 оставлен как временный fallback для клиентов, которые ещё не обновились.
+
+`GET /media/:id` отвечает с `Accept-Ranges: bytes` и поддерживает `Range`, что позволяет видеоплееру запускаться и перематываться без полной загрузки. Лимит одного файла — **30 МБ**.
+
+## Звонки
+
+WebSocket передаёт `callSignal` и `callEnd` только участникам DM. Сервер не расшифровывает прикладной payload signalling. Медиа-поток звонка проходит через WebRTC между участниками; для сложных NAT-сценариев самостоятельно добавьте TURN.
+
+## Публичный Render backend
+
+Адрес: `https://sassist-labs.onrender.com`, WebSocket: `wss://sassist-labs.onrender.com`.
+
+Render Free подходит для демонстрации и тестирования, но может засыпать и использует ephemeral filesystem. После cold start, redeploy или смены instance SQLite и медиа могут пропасть. Не используйте его как единственное постоянное хранилище.
+
+Для production добавьте persistent database, object storage (S3/R2/B2 или эквивалент) и TURN для звонков. Резервная копия self-host варианта — копия всего `DATA_DIR` (`sassist.db*`, `media/`, `auth_secret`).
+
+## Проверки
+
 ```bash
-npm run build && npm start &   # start server
-npm run smoke                  # auth, ws round-trip, clientId dedupe
-# restart persistence check:
-#   restart the server with the same DATA_DIR, then
-SMOKE_PHASE=2 SMOKE_TOKEN=<token printed by phase 1> node smoke.js
+npm run build
+npm run smoke
+BASE=http://127.0.0.1:8080 WS=ws://127.0.0.1:8080 node dm-smoke.js
+BASE=http://127.0.0.1:8080 node media-transport-smoke.js
 ```
-CI (`.github/workflows/server-ci.yml`) runs both phases on every push.
 
-Protocol: see [PROTOCOL.md](./PROTOCOL.md).
+Технические кадры API описаны в [PROTOCOL.md](PROTOCOL.md).

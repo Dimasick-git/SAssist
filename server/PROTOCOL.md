@@ -1,85 +1,59 @@
-# SAssist protocol (v1)
+# SAssist Protocol
 
-Two transports on one port:
+## English — short reference
 
-- **REST (HTTP/JSON)** — auth, profile, @usernames, premium, media upload/download.
-- **WebSocket (JSON frames)** — chat. One JSON object per frame, field `type` discriminates.
+REST handles authentication, profiles and media. WebSocket carries JSON chat frames. Authenticate every socket with `join { token }`. The current Android client uses `clientId` to deduplicate offline retries.
 
-All durable state (users, messages, reactions) lives in SQLite under `DATA_DIR`.
+---
+
+# Протокол SAssist — русская справка
+
+REST и WebSocket работают на одном порту. REST предназначен для входа, профиля и медиа; WebSocket — для чатов, DM, presence, read receipts и signalling звонков.
 
 ## REST
 
-| Method & path | Auth | Body / params | Response |
-|---|---|---|---|
-| `GET /health` | — | — | `SAssist server ok` |
-| `POST /auth/request` | — | `{method: "email"\|"phone", identifier}` | `{ok, delivered, devCode?}` — `devCode` is returned only when no delivery channel (SMTP/Twilio) is configured |
-| `POST /auth/verify` | — | `{method, identifier, code, username?}` | `{ok, token, user}` — token is valid 30 days |
-| `GET /handle/check?handle=x` | — | — | `{valid, available, premiumOnly, reason?}` |
-| `POST /handle/claim` | Bearer | `{handle}` | `{ok, user}` / `409 {error}` — handles ≤4 chars are Premium-only |
-| `GET /profile` | Bearer | — | `{ok, user}` |
-| `POST /profile` | Bearer | `{displayName?, bio?, color?}` | `{ok, user}` |
-| `POST /premium/claim` | Bearer | `{code}` | `{ok, user}` / `402 {error}` — requires `PREMIUM_CODE` env set on the server |
-| `POST /upload` | Bearer | `{dataBase64, mime, name, kind: "image"\|"video"\|"file", width?, height?}` (max 30 MB) | `{ok, media: MediaRef, url}` |
-| `GET /media/:id` | — | — | raw bytes with original `Content-Type` |
-
-Bearer auth: `Authorization: Bearer <token>` header (or `token` field in the JSON body).
-
-## WebSocket
-
-### client → server
-| type | fields | meaning |
+| Метод | Авторизация | Назначение |
 |---|---|---|
-| `join` | `token` | authenticate the socket; server replies `welcome` + `history` for `#general` |
-| `send` | `channel, text, clientId?, media?, replyTo?, secret?, ttl?` | post a message |
-| `switchChannel` | `channel` | change active channel, receive its history |
-| `history` | `channel, since?, limit?` | incremental sync: messages with `ts >= since` (ascending, cap 500). Without `since`: last 100 |
-| `listChannels` | — | request channel list |
-| `typing` | `channel` | typing indicator (broadcast to others) |
-| `react` | `channel, messageId, emoji` | toggle own reaction |
-| `read` | `channel, messageIds[]` | mark messages as read by me (ignored for own messages) |
+| `GET /health` | нет | Проверка сервера. |
+| `POST /auth/request` | нет | Запрос OTP: `{method, identifier}`. |
+| `POST /auth/verify` | нет | Проверка OTP: `{method, identifier, code, username?}`. |
+| `GET /handle/check?handle=x` | нет | Проверка `@username`. |
+| `POST /handle/claim` | Bearer | Занять `@username`. |
+| `GET /profile` | Bearer | Текущий профиль. |
+| `GET /users/:id` | Bearer | Публичный профиль пользователя. |
+| `POST /profile` | Bearer | Имя, bio, цвет, avatar/banner id. |
+| `POST /upload/raw?...` | Bearer | Быстрая бинарная загрузка, максимум 30 МБ. |
+| `POST /upload` | Bearer | Legacy JSON/base64 fallback. |
+| `GET /media/:id` | нет | Файл, `Range` поддерживается. |
 
-### server → client
-| type | fields |
-|---|---|
-| `welcome` | `user: PublicUser, userId, username, channels[]` |
-| `message` | `message: ChatMessage` |
-| `reaction` | `channel, messageId, reactions{emoji: userId[]}` |
-| `read` | `channel, messageId, userId, user: PublicUser` |
-| `presence` | `channel, users: PublicUser[]` |
-| `typing` | `channel, user: PublicUser` |
-| `history` | `channel, messages[], since?` (`since` echoed on sync responses) |
-| `channels` | `channels[]` |
-| `error` | `reason` |
+Bearer token передаётся заголовком `Authorization: Bearer <token>`.
 
-### clientId semantics (offline queue)
+## WebSocket: клиент → сервер
 
-- A client MAY attach an opaque `clientId` (≤64 chars, e.g. a UUID) to `send`.
-- The server stores it and **echoes it only in the copy of the `message` frame
-  delivered to the sending socket** — other clients never see it, and it never
-  appears in `history`.
-- `(userId, clientId)` is unique. Re-sending the same `clientId` (offline-queue
-  retry after a lost echo) does **not** duplicate the message: the server
-  re-echoes the already-stored copy to the sender only.
-- Flow: insert an optimistic local row keyed by `clientId` → send → on echo,
-  replace the local row with the server copy.
+| `type` | Основные поля | Назначение |
+|---|---|---|
+| `join` | `token` | Авторизация WebSocket. |
+| `send` | `channel`, `text`, `clientId?`, `media?`, `replyTo?` | Сообщение. |
+| `switchChannel` | `channel` | Выбор канала. |
+| `history` | `channel`, `since?`, `limit?` | История или incremental sync. |
+| `listChannels` | — | Список каналов и DM. |
+| `typing` | `channel` | Индикатор печати. |
+| `react` | `channel`, `messageId`, `emoji` | Реакция. |
+| `read` | `channel`, `messageIds[]` | Read receipt. |
+| `startDm` | `userId` | Создать/открыть личный чат. |
+| `callSignal` | `channel`, `payload` | Зашифрованный offer/answer/ICE только для DM. |
+| `callEnd` | `channel` | Завершение звонка. |
 
-### Secret messages
+## WebSocket: сервер → клиент
 
-`send` with `secret: true` (optionally `ttl` seconds) is delivered live to the
-channel but **never stored** — it does not appear in history or survive a
-restart. The `clientId` echo still works for secret messages.
+`welcome`, `history`, `message`, `reaction`, `read`, `presence`, `typing`, `channels`, `dmStarted`, `callSignal`, `callEnd`, `error`.
 
-### Types
+## Offline clientId
 
-```ts
-PublicUser  { id, displayName, handle, premium, color, bio? }
-MediaRef    { id, kind: "image"|"video"|"audio"|"file", mime, name, size, width?, height?, durationMs? }
-ChatMessage { id, channel, userId, username, handle, premium, color, text, ts,
-              media?, replyTo?, secret?, ttl?, reactions?, clientId?, readBy? }
-```
+Клиент кладёт UUID в `clientId` при отправке. Сервер считает пару `(userId, clientId)` уникальной и при повторной отправке возвращает уже существующее сообщение отправителю вместо создания дубля. Это позволяет без потерь повторять офлайн-очередь.
 
-Default channels: `general`, `code-help`, `showtime`.
+## Приватность
 
-Note: clients may end-to-end encrypt `text` (the reference Android client uses
-AES-256-GCM, wire format `v1:<salt>:<iv>:<ct>`); the server treats text as an
-opaque string. Media is **not** E2EE.
+Android-клиент шифрует текст в формате `v1:<salt>:<iv>:<ciphertext>`. Сервер хранит и пересылает строку как непрозрачные данные. Для настоящего общего шифрования участники должны установить одинаковый ключ комнаты. Медиа не шифруются этим форматом.
+
+Стандартные публичные каналы: `general`, `code-help`, `showtime`.
