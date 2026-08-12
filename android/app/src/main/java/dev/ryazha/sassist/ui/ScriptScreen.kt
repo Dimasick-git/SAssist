@@ -72,6 +72,7 @@ fun ScriptScreen(
     var out by remember { mutableStateOf("") }
     var running by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+    val runningText = tr("выполняется…", "running…")
 
     Column(Modifier.fillMaxSize().background(BgDark)) {
         // top bar
@@ -88,7 +89,7 @@ fun ScriptScreen(
                 Modifier.clip(RoundedCornerShape(10.dp)).background(if (running) TextMuted else OnlineGreen)
                     .clickable(enabled = !running) {
                         running = true
-                        out = tr("выполняется…", "running…")
+                        out = runningText
                         scope.launch {
                             val result = withContext(Dispatchers.Default) {
                                 val host = ScriptHost(onSend = onSend, lastMessageText = lastMessage)
