@@ -14,8 +14,10 @@ import java.util.concurrent.TimeUnit
 /** Downloads an attachment to app cache and lets Android select a compatible app. */
 object MediaOpener {
     private val client = OkHttpClient.Builder()
-        .connectTimeout(15, TimeUnit.SECONDS)
+        .connectTimeout(75, TimeUnit.SECONDS)
         .readTimeout(120, TimeUnit.SECONDS)
+        .callTimeout(180, TimeUnit.SECONDS)
+        .retryOnConnectionFailure(true)
         .build()
 
     suspend fun open(context: Context, url: String, suggestedName: String, mime: String): String? = withContext(Dispatchers.IO) {

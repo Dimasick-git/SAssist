@@ -11,8 +11,13 @@ import java.util.concurrent.TimeUnit
 /** REST auth client. Phone/email OTP, just like Telegram/WhatsApp. */
 object AuthApi {
     private val client = OkHttpClient.Builder()
-        .connectTimeout(15, TimeUnit.SECONDS)
-        .readTimeout(15, TimeUnit.SECONDS)
+        // Render Free can take up to about a minute to wake after inactivity.
+        // Keep OTP registration usable instead of failing at the old 15s limit.
+        .connectTimeout(75, TimeUnit.SECONDS)
+        .readTimeout(90, TimeUnit.SECONDS)
+        .writeTimeout(90, TimeUnit.SECONDS)
+        .callTimeout(95, TimeUnit.SECONDS)
+        .retryOnConnectionFailure(true)
         .build()
     private val JSON = "application/json".toMediaType()
 

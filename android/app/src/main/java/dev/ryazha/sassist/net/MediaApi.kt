@@ -14,9 +14,11 @@ object MediaApi {
     const val MAX_BYTES = 30 * 1024 * 1024
 
     private val client = OkHttpClient.Builder()
-        .connectTimeout(15, TimeUnit.SECONDS)
+        .connectTimeout(75, TimeUnit.SECONDS)
         .readTimeout(120, TimeUnit.SECONDS)
         .writeTimeout(120, TimeUnit.SECONDS)
+        .callTimeout(180, TimeUnit.SECONDS)
+        .retryOnConnectionFailure(true)
         .build()
     private val JSON = "application/json".toMediaType()
 

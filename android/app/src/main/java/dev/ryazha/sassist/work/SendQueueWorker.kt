@@ -31,7 +31,8 @@ class SendQueueWorker(context: Context, params: WorkerParameters) : CoroutineWor
     companion object {
         const val WORK_NAME = "sassist_send_queue"
         private const val MAX_SEND_ATTEMPTS = 5
-        private const val SESSION_TIMEOUT_MS = 25_000L
+        // Allow a sleeping Render Free instance to wake before the queued send is abandoned.
+        private const val SESSION_TIMEOUT_MS = 105_000L
     }
 
     override suspend fun doWork(): Result {
@@ -78,7 +79,8 @@ class SendQueueWorker(context: Context, params: WorkerParameters) : CoroutineWor
 
         val client = OkHttpClient.Builder()
             .pingInterval(20, TimeUnit.SECONDS)
-            .connectTimeout(15, TimeUnit.SECONDS)
+            .connectTimeout(75, TimeUnit.SECONDS)
+            .retryOnConnectionFailure(true)
             .build()
 
         val remaining = sendable.map { it.clientId }.filterNotNull().toMutableSet()

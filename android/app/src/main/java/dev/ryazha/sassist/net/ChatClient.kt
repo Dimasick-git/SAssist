@@ -16,7 +16,9 @@ class ChatClient(
 ) {
     private val client = OkHttpClient.Builder()
         .pingInterval(20, TimeUnit.SECONDS)
-        .connectTimeout(15, TimeUnit.SECONDS)
+        // A free Render instance may need roughly a minute before accepting a WebSocket upgrade.
+        .connectTimeout(75, TimeUnit.SECONDS)
+        .retryOnConnectionFailure(true)
         .build()
     private var ws: WebSocket? = null
 
