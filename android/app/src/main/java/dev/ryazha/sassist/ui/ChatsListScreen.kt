@@ -15,6 +15,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -24,10 +25,12 @@ import dev.ryazha.sassist.model.AppLanguage
 import dev.ryazha.sassist.model.ChannelMeta
 import dev.ryazha.sassist.model.ConnState
 import dev.ryazha.sassist.ui.theme.*
+import coil.compose.AsyncImage
 
 @Composable
 fun ChatsListScreen(
     username: String,
+    avatarUrl: String?,
     channels: List<String>,
     connState: ConnState,
     presence: Map<String, Int>,
@@ -55,7 +58,16 @@ fun ChatsListScreen(
                     .clickable { onProfile() },
                 contentAlignment = Alignment.Center
             ) {
-                Text(initials(username), color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                if (!avatarUrl.isNullOrBlank()) {
+                    AsyncImage(
+                        model = avatarUrl,
+                        contentDescription = tr("Ваш аватар", "Your avatar"),
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                } else {
+                    Text(initials(username), color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                }
             }
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {

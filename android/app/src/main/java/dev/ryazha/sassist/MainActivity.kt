@@ -80,7 +80,9 @@ class MainActivity : ComponentActivity() {
                             onVerify = { vm.verifyCode(it) }, onResend = { vm.resendCode() }, onBack = { vm.startAuth() }
                         )
                         Stage.Chats -> ChatsListScreen(
-                            username = state.username, channels = state.channels, connState = state.connState,
+                            username = state.username,
+                            avatarUrl = state.profile.avatarId.takeIf { it.isNotBlank() }?.let { vm.mediaUrl(it) },
+                            channels = state.channels, connState = state.connState,
                             presence = state.presenceByChannel, preview = { vm.lastPreview(it) },
                             onOpen = { vm.openChannel(it) }, onScripts = { vm.openScripts() },
                             onProfile = { vm.openProfile() },

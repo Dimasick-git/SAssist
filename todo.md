@@ -21,3 +21,6 @@
 - [ ] Diagnose and fix the Android login connection timeout to `sassist-labs.onrender.com:443`, then rebuild and verify the release APK.
 - [ ] Diagnose and fix the Android post-login WebSocket stall that leaves the channel list in `Connecting…`.
 - [x] Add a persistent Russian-default language setting, an English switch, and localized Android interface/error strings.
+- [x] Show the selected profile avatar in the main channel menu with an initials fallback.
+- [ ] Add nearby offline Bluetooth message delivery with explicit pairing, runtime permissions, encrypted payloads, and queued server reconciliation.
+- [ ] Add Telegram/Discord-style private audio and video calls with signalling, call controls, runtime media permissions, and reconnect-safe call state.

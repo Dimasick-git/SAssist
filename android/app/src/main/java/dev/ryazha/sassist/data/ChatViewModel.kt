@@ -137,6 +137,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         if (!token.isNullOrBlank()) {
             _state.update { it.copy(stage = Stage.Chats, username = session.username ?: "") }
             connect()
+            loadMenuProfile()
         }
         observeLocalMessages()
         observeConnectivity()
@@ -233,6 +234,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                 session.username = res.username ?: s.pendingUsername
                 _state.update { it.copy(authBusy = false, stage = Stage.Chats, username = session.username ?: "", authError = null) }
                 connect(force = true)
+                loadMenuProfile()
             } else {
                 _state.update { it.copy(authBusy = false, authError = res.error ?: "Invalid or expired code") }
             }
@@ -710,6 +712,23 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     fun toggleVoice(messageId: String, url: String) = voicePlayer.toggle(messageId, url)
 
     // ---- profile ----
+    /** Loads the public-facing profile silently so the main menu can render the chosen avatar. */
+    private fun loadMenuProfile() {
+        val token = session.token ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            val r = AuthApi.getProfile(session.serverUrl, token)
+            if (!r.ok) return@launch
+            _state.update { s ->
+                s.copy(profile = ProfileUi(
+                    displayName = r.displayName ?: s.username,
+                    handle = r.handle ?: "", premium = r.premium,
+                    color = r.color ?: "5865F2", bio = r.bio ?: "",
+                    avatarId = r.avatarId ?: "", bannerId = r.bannerId ?: ""
+                ))
+            }
+        }
+    }
+
     fun openProfile() {
         _state.update { it.copy(stage = Stage.Profile, profile = it.profile.copy(busy = true, error = null, notice = null)) }
         val token = session.token ?: return
