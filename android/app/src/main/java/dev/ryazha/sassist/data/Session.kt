@@ -13,9 +13,10 @@ import androidx.security.crypto.MasterKey
  */
 class Session(context: Context) {
     companion object {
-        // Free cloud backend target: deploy this repo to Koyeb's Free Instance
-        // as app `sassist` under org `dimasick-git` to get this public URL.
-        const val DEFAULT_SERVER_URL = "wss://sassist-dimasick-git.koyeb.app"
+        // Public SAssist Labs free Render backend. Users can override it from
+        // Server settings, but this verified URL works out of the box.
+        const val DEFAULT_SERVER_URL = "wss://sassist-labs.onrender.com"
+        private const val LEGACY_KOYEB_URL = "wss://sassist-dimasick-git.koyeb.app"
 
         // Local fallback for emulator development: run `docker compose up -d --build`.
         const val LOCAL_SERVER_URL = "ws://10.0.2.2:8080"
@@ -46,10 +47,12 @@ class Session(context: Context) {
         get() = prefs.getString("username", null)
         set(v) { prefs.edit().putString("username", v).apply() }
 
-    // Defaults to the free Koyeb cloud backend URL. Users can still replace it
-    // with their own Koyeb/LAN/local URL in Server settings.
+    // Migrate the inactive historic Koyeb default while preserving every other
+    // user-selected server address as an explicit override.
     var serverUrl: String
-        get() = prefs.getString("serverUrl", DEFAULT_SERVER_URL) ?: DEFAULT_SERVER_URL
+        get() = prefs.getString("serverUrl", DEFAULT_SERVER_URL)
+            ?.takeUnless { it == LEGACY_KOYEB_URL }
+            ?: DEFAULT_SERVER_URL
         set(v) { prefs.edit().putString("serverUrl", v).apply() }
 
     fun roomKey(channel: String): String =

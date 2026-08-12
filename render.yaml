@@ -22,6 +22,8 @@ services:
     envVars:
       - key: PORT
         value: 8080
+      - key: HOST
+        value: 0.0.0.0
       - key: DATA_DIR
         value: /tmp/sassist-data
       - key: AUTH_SECRET

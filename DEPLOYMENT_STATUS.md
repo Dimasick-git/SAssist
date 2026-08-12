@@ -12,4 +12,13 @@ Follow-up:
 - Koyeb's current dashboard displays a migration notice rather than a service-creation interface, so Render is being checked as the provider-ready alternative already described by `render.yaml`.
 - Render requires an account sign-in. A GitHub sign-in transition did not complete in the current browser session, which returned to a blank page before authentication could be confirmed.
 
+## Free Render deployment
+
+- The `sassist-labs` Blueprint was created in Render from `Dimasick-git/SAssist`, branch `main`, commit `75a0956`.
+- Render accepted the free no-card configuration and started creating web service `sassist-labs`.
+- Deployment is still running at the time of this update; a public URL and health-check result remain to be verified.
+- Render assigned the public service URL `https://sassist-labs.onrender.com` (WebSocket: `wss://sassist-labs.onrender.com`). The initial Docker build/start must still be checked before switching the Android default endpoint.
+- Direct `GET /health` to the Render URL returned HTTP 200. The dashboard log view has not yet populated, so public API behavior is being verified with direct HTTP/WebSocket smoke tests.
+- Render marks the first deployment for commit `75a0956` as `live`; the public API has shown transient `x-render-routing: no-server` health responses, so repeat health and functional tests are required before the Android URL is finalized.
+
 The Android client must point at a deployed server running the current commit before profile avatar/banner updates and private messages can work for external users.
