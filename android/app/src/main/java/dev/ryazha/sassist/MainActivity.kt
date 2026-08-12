@@ -25,6 +25,7 @@ import dev.ryazha.sassist.ui.AuthIdentifierScreen
 import dev.ryazha.sassist.ui.ChatScreen
 import dev.ryazha.sassist.ui.ChatsListScreen
 import dev.ryazha.sassist.ui.CodeScreen
+import dev.ryazha.sassist.ui.CallScreen
 import dev.ryazha.sassist.ui.ProfileScreen
 import dev.ryazha.sassist.ui.PublicProfileScreen
 import dev.ryazha.sassist.ui.ScriptScreen
@@ -46,6 +47,7 @@ class MainActivity : ComponentActivity() {
                 BackHandler(enabled = state.stage != Stage.Welcome) {
                     when (state.stage) {
                         Stage.Chat -> vm.backToChats()
+                        Stage.Call -> vm.endCall()
                         Stage.Scripts -> vm.closeScripts()
                         Stage.Profile -> vm.closeProfile()
                         Stage.UserProfile -> vm.closeUserProfile()
@@ -120,8 +122,19 @@ class MainActivity : ComponentActivity() {
                             onMarkRead = { vm.markChannelRead(state.currentChannel) },
                             onSetRoomKey = { vm.setRoomKey(it) },
                             onOpenScripts = { vm.openScripts() },
+                            onAudioCall = { vm.startCall(dev.ryazha.sassist.model.CallKind.Audio) },
+                            onVideoCall = { vm.startCall(dev.ryazha.sassist.model.CallKind.Video) },
                             onBack = { vm.backToChats() }
                         )
+                        Stage.Call -> state.call?.let { call ->
+                            CallScreen(
+                                call = call,
+                                onSignal = { vm.sendCallSignal(it) },
+                                onAccept = { vm.acceptIncomingCall() },
+                                onDecline = { vm.declineIncomingCall() },
+                                onEnd = { vm.endCall() }
+                            )
+                        }
                         Stage.Profile -> ProfileScreen(
                             profile = state.profile,
                             avatarUrl = { vm.mediaUrl(it) },

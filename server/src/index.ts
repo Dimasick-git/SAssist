@@ -252,6 +252,36 @@ wss.on("connection", (ws) => {
         broadcastChannel(channel, { type: "typing", channel, user: publicOf(client.id) }, ws);
         break;
       }
+      case "callSignal": {
+        if (!client) { send(ws, { type: "error", reason: "join first" }); break; }
+        const channel = "" + ((msg as any).channel || "");
+        const payload = ("" + ((msg as any).payload || "")).slice(0, 200_000);
+        // Calls are private: never relay a signalling payload to a public channel.
+        if (!channel.startsWith("dm:") || !payload || !canAccessChannel(client.id, channel)) {
+          send(ws, { type: "error", reason: "private call channel required" }); break;
+        }
+        const from = publicOf(client.id);
+        // Relay to every signed-in device owned by the other DM participant even
+        // when it is currently viewing another channel, so an incoming call rings.
+        for (const c of clients.values()) {
+          if (c.id !== client.id && canAccessChannel(c.id, channel)) {
+            send(c.ws, { type: "callSignal", channel, from, payload });
+          }
+        }
+        break;
+      }
+      case "callEnd": {
+        if (!client) break;
+        const channel = "" + ((msg as any).channel || "");
+        if (!channel.startsWith("dm:") || !canAccessChannel(client.id, channel)) break;
+        const from = publicOf(client.id);
+        for (const c of clients.values()) {
+          if (c.id !== client.id && canAccessChannel(c.id, channel)) {
+            send(c.ws, { type: "callEnd", channel, from });
+          }
+        }
+        break;
+      }
       case "react": {
         if (!client) break;
         const channel = (msg as any).channel || client.channel;

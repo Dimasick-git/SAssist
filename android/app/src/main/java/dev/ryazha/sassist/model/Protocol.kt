@@ -35,9 +35,21 @@ data class ChatMessage(
 
 enum class ConnState { Disconnected, Connecting, Connected, Error }
 
-enum class Stage { Welcome, EnterIdentifier, EnterCode, Chats, Chat, Scripts, Profile, UserProfile }
+enum class Stage { Welcome, EnterIdentifier, EnterCode, Chats, Chat, Call, Scripts, Profile, UserProfile }
 
 enum class AuthMethod { Phone, Email }
+
+enum class CallKind { Audio, Video }
+enum class CallPhase { Incoming, Outgoing, Connecting, Active }
+
+data class CallUi(
+    val channel: String,
+    val kind: CallKind,
+    val phase: CallPhase,
+    val peerName: String = "",
+    val signals: List<String> = emptyList(),
+    val returnStage: Stage = Stage.Chat
+)
 
 /** Metadata for rendering channels as pretty chat rows. */
 data class ChannelMeta(val id: String, val title: String, val subtitle: String, val emoji: String)

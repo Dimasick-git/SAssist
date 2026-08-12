@@ -18,11 +18,13 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.filled.AttachFile
+import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Terminal
+import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -98,6 +100,8 @@ fun ChatScreen(
     onMarkRead: () -> Unit,
     onSetRoomKey: (String) -> Unit,
     onOpenScripts: () -> Unit,
+    onAudioCall: () -> Unit,
+    onVideoCall: () -> Unit,
     onBack: () -> Unit
 ) {
     var input by remember { mutableStateOf("") }
@@ -164,6 +168,14 @@ fun ChatScreen(
             }
             IconButton(onClick = onOpenScripts) {
                 Icon(Icons.Filled.Terminal, contentDescription = tr("Скрипты", "Scripts"), tint = TextPrimary)
+            }
+            if (isDirect) {
+                IconButton(onClick = onAudioCall) {
+                    Icon(Icons.Filled.Call, contentDescription = tr("Аудиозвонок", "Audio call"), tint = TextPrimary)
+                }
+                IconButton(onClick = onVideoCall) {
+                    Icon(Icons.Filled.Videocam, contentDescription = tr("Видеозвонок", "Video call"), tint = TextPrimary)
+                }
             }
         }
 

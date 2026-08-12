@@ -15,6 +15,9 @@ import dev.ryazha.sassist.audio.VoiceRecorder
 import dev.ryazha.sassist.crypto.E2ee
 import dev.ryazha.sassist.model.AppLanguage
 import dev.ryazha.sassist.model.AuthMethod
+import dev.ryazha.sassist.model.CallKind
+import dev.ryazha.sassist.model.CallPhase
+import dev.ryazha.sassist.model.CallUi
 import dev.ryazha.sassist.model.ChatMessage
 import dev.ryazha.sassist.model.ConnState
 import dev.ryazha.sassist.model.MediaRef
@@ -111,6 +114,7 @@ data class ChatState(
     val recording: Boolean = false,
     val recordingStartedAt: Long = 0L,
     val nearby: NearbyUi = NearbyUi(),
+    val call: CallUi? = null,
     val namesById: Map<String, String> = emptyMap()
 ) {
     val messages: List<ChatMessage> get() = messagesByChannel[currentChannel] ?: emptyList()
@@ -524,6 +528,32 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                 refreshCustomKeyFlags()
                 client?.send(JSONObject().put("type", "switchChannel").put("channel", channel).toString())
             }
+            "callSignal" -> {
+                val channel = o.optString("channel")
+                if (!channel.startsWith("dm:")) return
+                val signal = E2ee.decrypt(o.optString("payload"), session.roomKey(channel))
+                val signalJson = runCatching { JSONObject(signal) }.getOrNull() ?: return
+                val kind = if (signalJson.optString("kind") == "video") CallKind.Video else CallKind.Audio
+                val type = signalJson.optString("type")
+                val from = o.optJSONObject("from")?.optString("displayName") ?: "SAssist"
+                _state.update { s ->
+                    val existing = s.call?.takeIf { it.channel == channel }
+                    val updated = if (existing != null) {
+                        existing.copy(
+                            phase = if (type == "answer") CallPhase.Active else existing.phase,
+                            signals = existing.signals + signal
+                        )
+                    } else CallUi(channel, kind, CallPhase.Incoming, from, signals = listOf(signal), returnStage = s.stage)
+                    s.copy(stage = Stage.Call, call = updated)
+                }
+            }
+            "callEnd" -> {
+                val channel = o.optString("channel")
+                val call = _state.value.call
+                if (call != null && call.channel == channel) {
+                    _state.update { it.copy(stage = call.returnStage, call = null) }
+                }
+            }
         }
     }
 
@@ -543,6 +573,39 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     fun openScripts() { _state.update { it.copy(returnStage = it.stage, stage = Stage.Scripts) } }
     fun closeScripts() { _state.update { it.copy(stage = it.returnStage) } }
     fun toggleCode() { _state.update { it.copy(codeMode = !it.codeMode) } }
+
+    fun startCall(kind: CallKind) {
+        val s = _state.value
+        val channel = s.currentChannel
+        if (!channel.startsWith("dm:")) return
+        _state.update {
+            it.copy(
+                stage = Stage.Call,
+                call = CallUi(channel = channel, kind = kind, phase = CallPhase.Outgoing, peerName = "Личный чат", returnStage = Stage.Chat)
+            )
+        }
+    }
+
+    fun acceptIncomingCall() {
+        _state.update { s -> s.copy(call = s.call?.copy(phase = CallPhase.Connecting)) }
+    }
+
+    fun declineIncomingCall() = endCall()
+
+    fun sendCallSignal(raw: String) {
+        val call = _state.value.call ?: return
+        if (!call.channel.startsWith("dm:")) return
+        val encrypted = E2ee.encrypt(raw, session.roomKey(call.channel))
+        client?.send(JSONObject().put("type", "callSignal").put("channel", call.channel).put("payload", encrypted).toString())
+        val type = runCatching { JSONObject(raw).optString("type") }.getOrDefault("")
+        if (type == "answer") _state.update { s -> s.copy(call = s.call?.copy(phase = CallPhase.Active)) }
+    }
+
+    fun endCall() {
+        val call = _state.value.call ?: return
+        client?.send(JSONObject().put("type", "callEnd").put("channel", call.channel).toString())
+        _state.update { it.copy(stage = call.returnStage, call = null) }
+    }
 
     fun startNearby() {
         nearby.start("SAssist " + _state.value.username.ifBlank { "device" })
