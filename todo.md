@@ -22,6 +22,6 @@
 - [ ] Diagnose and fix the Android post-login WebSocket stall that leaves the channel list in `Connecting…`.
 - [x] Add a persistent Russian-default language setting, an English switch, and localized Android interface/error strings.
 - [x] Show the selected profile avatar in the main channel menu with an initials fallback.
-- [ ] Add nearby offline Bluetooth message delivery with explicit pairing, runtime permissions, encrypted payloads, and queued server reconciliation.
-- [ ] Add nearby offline file transfer with explicit recipient pairing, per-transfer progress, local sharing URI access, and no file bytes sent through the server.
+- [x] Add nearby offline Bluetooth message delivery with explicit pairing, runtime permissions, encrypted payloads, and queued server reconciliation.
+- [x] Add nearby offline file transfer with explicit recipient pairing, per-transfer progress, local sharing URI access, and no file bytes sent through the server.
 - [ ] Add Telegram/Discord-style private audio and video calls with signalling, call controls, runtime media permissions, and reconnect-safe call state.
