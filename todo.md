@@ -20,4 +20,4 @@
 - [x] Reconfigure the deployment path for a free no-card tier and document its non-persistent storage limitation.
 - [ ] Diagnose and fix the Android login connection timeout to `sassist-labs.onrender.com:443`, then rebuild and verify the release APK.
 - [ ] Diagnose and fix the Android post-login WebSocket stall that leaves the channel list in `Connecting…`.
-- [ ] Add a persistent Russian-default language setting, an English switch, and localized Android interface/error strings.
+- [x] Add a persistent Russian-default language setting, an English switch, and localized Android interface/error strings.
