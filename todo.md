@@ -27,5 +27,5 @@
 - [x] Add Telegram/Discord-style private audio and video calls with signalling, call controls, runtime media permissions, and reconnect-safe call state.
 - [x] Reduce photo and video upload/download latency through client-side compression, streaming-friendly transport, and responsive media rendering.
 - [x] Document the public backend architecture, operational limits, and practical upgrade path for persistent media storage.
-- [ ] Publish a v1.0.0 GitHub release with the verified APK and user-facing Russian release notes.
+- [x] Publish a v1.0.0 GitHub release with the verified APK and user-facing Russian release notes.
 - [x] Rewrite README and key documentation with a concise English section followed by complete Russian installation and operation guidance.
