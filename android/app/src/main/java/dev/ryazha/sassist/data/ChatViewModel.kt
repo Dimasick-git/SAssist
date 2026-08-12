@@ -23,8 +23,10 @@ import dev.ryazha.sassist.net.AuthApi
 import dev.ryazha.sassist.net.ChatClient
 import dev.ryazha.sassist.net.ConnectivityObserver
 import dev.ryazha.sassist.net.MediaApi
+import dev.ryazha.sassist.net.MediaOpener
 import dev.ryazha.sassist.nearby.NearbyMessenger
 import dev.ryazha.sassist.nearby.NearbyPeer
+import dev.ryazha.sassist.nearby.NearbyTransfer
 import dev.ryazha.sassist.script.ScriptEngine
 import dev.ryazha.sassist.script.ScriptHost
 import dev.ryazha.sassist.work.SendQueueWorker
@@ -77,7 +79,8 @@ data class NearbyUi(
     val active: Boolean = false,
     val status: String = "stopped",
     val peers: List<NearbyPeer> = emptyList(),
-    val pendingPeers: List<NearbyPeer> = emptyList()
+    val pendingPeers: List<NearbyPeer> = emptyList(),
+    val transfers: List<NearbyTransfer> = emptyList()
 )
 
 data class ChatState(
@@ -133,7 +136,13 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
             _state.update { it.copy(nearby = it.nearby.copy(peers = peers, pendingPeers = pending)) }
         },
         onStatus = { status -> _state.update { it.copy(nearby = it.nearby.copy(status = status)) } },
-        onPayload = { raw -> receiveNearbyPayload(raw) }
+        onPayload = { raw -> receiveNearbyPayload(raw) },
+        onFileTransfer = { transfer ->
+            _state.update { state ->
+                val next = (state.nearby.transfers.filterNot { it.payloadId == transfer.payloadId && it.incoming == transfer.incoming } + transfer).takeLast(12)
+                state.copy(nearby = state.nearby.copy(transfers = next))
+            }
+        }
     )
 
     private val recorder = VoiceRecorder(app)
@@ -551,6 +560,8 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     fun connectNearby(endpointId: String) = nearby.requestConnection(endpointId)
     fun acceptNearby(endpointId: String) = nearby.accept(endpointId)
     fun rejectNearby(endpointId: String) = nearby.reject(endpointId)
+    fun sendNearbyFile(uri: Uri) = viewModelScope.launch(Dispatchers.IO) { nearby.sendFile(uri) }
+    fun openNearbyFile(file: java.io.File, mime: String) = viewModelScope.launch { MediaOpener.openLocal(getApplication(), file, mime) }
 
     fun startReply(m: ChatMessage) { _state.update { it.copy(replyingTo = m) } }
     fun cancelReply() { _state.update { it.copy(replyingTo = null) } }

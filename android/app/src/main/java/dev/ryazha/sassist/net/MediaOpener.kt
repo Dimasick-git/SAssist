@@ -20,6 +20,20 @@ object MediaOpener {
         .retryOnConnectionFailure(true)
         .build()
 
+    /** Opens a file already received by Nearby without making any network request. */
+    fun openLocal(context: Context, file: File, mime: String): String? {
+        return try {
+            val uri = FileProvider.getUriForFile(context, context.packageName + ".fileprovider", file)
+            val intent = Intent(Intent.ACTION_VIEW)
+                .setDataAndType(uri, mime.ifBlank { "application/octet-stream" })
+                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            context.startActivity(Intent.createChooser(intent, "Open with"))
+            null
+        } catch (_: Exception) {
+            "No installed application can open this file."
+        }
+    }
+
     suspend fun open(context: Context, url: String, suggestedName: String, mime: String): String? = withContext(Dispatchers.IO) {
         try {
             val cleanName = suggestedName

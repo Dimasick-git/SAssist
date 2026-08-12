@@ -50,7 +50,9 @@ fun ChatsListScreen(
     onStopNearby: () -> Unit,
     onConnectNearby: (String) -> Unit,
     onAcceptNearby: (String) -> Unit,
-    onRejectNearby: (String) -> Unit
+    onRejectNearby: (String) -> Unit,
+    onSendNearbyFile: (android.net.Uri) -> Unit,
+    onOpenNearbyFile: (java.io.File, String) -> Unit
 ) {
     var menu by remember { mutableStateOf(false) }
     var serverDialog by remember { mutableStateOf(false) }
@@ -59,6 +61,9 @@ fun ChatsListScreen(
     val language = LocalAppLanguage.current
     val nearbyPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
         if (result.values.all { it }) onStartNearby()
+    }
+    val nearbyFileLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) onSendNearbyFile(uri)
     }
     fun requestNearby() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -175,6 +180,21 @@ fun ChatsListScreen(
                     if (nearby.active && nearby.peers.isEmpty() && nearby.pendingPeers.isEmpty()) {
                         Text(tr("Ищем устройства SAssist поблизости…", "Searching for nearby SAssist devices…"), color = TextMuted, fontSize = 12.sp)
                     }
+                    if (nearby.status == "connected") {
+                        TextButton(onClick = { nearbyFileLauncher.launch("*/*") }) { Text(tr("Выбрать и отправить файл", "Choose and send file")) }
+                    }
+                    nearby.transfers.forEach { transfer ->
+                        Column(Modifier.fillMaxWidth().background(BgDark).padding(8.dp)) {
+                            Text((if (transfer.incoming) "↓ " else "↑ ") + transfer.name, color = TextPrimary, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            if (transfer.state == "sending" || transfer.state == "receiving") {
+                                LinearProgressIndicator(progress = { transfer.progress / 100f }, modifier = Modifier.fillMaxWidth(), color = TgAccent, trackColor = BgInput)
+                            } else if (transfer.state == "received" && transfer.completedFile != null) {
+                                TextButton(onClick = { onOpenNearbyFile(transfer.completedFile, transfer.mime) }) { Text(tr("Открыть файл", "Open file")) }
+                            } else {
+                                Text(nearbyTransferStatus(transfer.state), color = if (transfer.state == "failed") Color(0xFFED4245) else OnlineGreen, fontSize = 11.sp)
+                            }
+                        }
+                    }
                 }
             }, containerColor = BgPanel
         )
@@ -243,4 +263,11 @@ private fun nearbyStatus(status: String): String = when (status) {
     "send_failed" -> tr("Не удалось отправить через Bluetooth", "Bluetooth send failed")
     "unavailable" -> tr("Bluetooth или сервис Nearby недоступен", "Bluetooth or Nearby service unavailable")
     else -> tr("Bluetooth выключен", "Bluetooth is off")
+}
+
+@Composable
+private fun nearbyTransferStatus(status: String): String = when (status) {
+    "sent" -> tr("Файл отправлен", "File sent")
+    "received" -> tr("Файл получен", "File received")
+    else -> tr("Передача не удалась", "Transfer failed")
 }

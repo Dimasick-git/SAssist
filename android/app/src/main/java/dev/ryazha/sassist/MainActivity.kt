@@ -91,7 +91,9 @@ class MainActivity : ComponentActivity() {
                             nearby = state.nearby,
                             onStartNearby = { vm.startNearby() }, onStopNearby = { vm.stopNearby() },
                             onConnectNearby = { vm.connectNearby(it) }, onAcceptNearby = { vm.acceptNearby(it) },
-                            onRejectNearby = { vm.rejectNearby(it) }
+                            onRejectNearby = { vm.rejectNearby(it) },
+                            onSendNearbyFile = { vm.sendNearbyFile(it) },
+                            onOpenNearbyFile = { file, mime -> vm.openNearbyFile(file, mime) }
                         )
                         Stage.Chat -> ChatScreen(
                             channels = state.channels, currentChannel = state.currentChannel,
