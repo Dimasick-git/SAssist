@@ -1,5 +1,8 @@
 package dev.ryazha.sassist.ui
 
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -20,12 +23,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import dev.ryazha.sassist.model.CHANNEL_META
+import coil.compose.AsyncImage
+import dev.ryazha.sassist.data.NearbyUi
 import dev.ryazha.sassist.model.AppLanguage
+import dev.ryazha.sassist.model.CHANNEL_META
 import dev.ryazha.sassist.model.ChannelMeta
 import dev.ryazha.sassist.model.ConnState
 import dev.ryazha.sassist.ui.theme.*
-import coil.compose.AsyncImage
 
 @Composable
 fun ChatsListScreen(
@@ -40,15 +44,33 @@ fun ChatsListScreen(
     onProfile: () -> Unit,
     onLogout: () -> Unit,
     onServer: (String) -> Unit,
-    onLanguage: (AppLanguage) -> Unit
+    onLanguage: (AppLanguage) -> Unit,
+    nearby: NearbyUi,
+    onStartNearby: () -> Unit,
+    onStopNearby: () -> Unit,
+    onConnectNearby: (String) -> Unit,
+    onAcceptNearby: (String) -> Unit,
+    onRejectNearby: (String) -> Unit
 ) {
     var menu by remember { mutableStateOf(false) }
     var serverDialog by remember { mutableStateOf(false) }
     var settingsDialog by remember { mutableStateOf(false) }
+    var nearbyDialog by remember { mutableStateOf(false) }
     val language = LocalAppLanguage.current
+    val nearbyPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
+        if (result.values.all { it }) onStartNearby()
+    }
+    fun requestNearby() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            nearbyPermissionLauncher.launch(arrayOf(
+                android.Manifest.permission.BLUETOOTH_SCAN,
+                android.Manifest.permission.BLUETOOTH_ADVERTISE,
+                android.Manifest.permission.BLUETOOTH_CONNECT
+            ))
+        } else onStartNearby()
+    }
 
     Column(Modifier.fillMaxSize().background(BgDarkest)) {
-        // Top bar
         Row(
             Modifier.fillMaxWidth().background(BgDark).padding(horizontal = 16.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically
@@ -65,9 +87,7 @@ fun ChatsListScreen(
                         contentScale = ContentScale.Crop,
                         modifier = Modifier.fillMaxSize()
                     )
-                } else {
-                    Text(initials(username), color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                }
+                } else Text(initials(username), color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 16.sp)
             }
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
@@ -82,6 +102,7 @@ fun ChatsListScreen(
                     DropdownMenuItem(text = { Text(tr("Профиль", "Profile")) }, onClick = { menu = false; onProfile() })
                     DropdownMenuItem(text = { Text(tr("Скрипты", "Scripts")) }, onClick = { menu = false; onScripts() })
                     DropdownMenuItem(text = { Text(tr("Настройки", "Settings")) }, onClick = { menu = false; settingsDialog = true })
+                    DropdownMenuItem(text = { Text(tr("Bluetooth рядом", "Nearby Bluetooth")) }, onClick = { menu = false; nearbyDialog = true })
                     DropdownMenuItem(text = { Text(tr("Адрес сервера", "Server URL")) }, onClick = { menu = false; serverDialog = true })
                     DropdownMenuItem(text = { Text(tr("Выйти", "Log out")) }, onClick = { menu = false; onLogout() })
                 }
@@ -89,12 +110,10 @@ fun ChatsListScreen(
         }
 
         ConnBanner(connState)
-
         Text(
             "  " + tr("Каналы", "Channels"), color = TextMuted, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
             modifier = Modifier.padding(start = 16.dp, top = 14.dp, bottom = 6.dp)
         )
-
         LazyColumn(Modifier.fillMaxSize()) {
             items(channels) { ch ->
                 val meta = CHANNEL_META[ch] ?: ChannelMeta(ch, ch.replaceFirstChar { it.uppercase() }, "Channel", "#")
@@ -120,8 +139,44 @@ fun ChatsListScreen(
                         Text("English", color = TextPrimary)
                     }
                 }
+            }, containerColor = BgPanel
+        )
+    }
+
+    if (nearbyDialog) {
+        AlertDialog(
+            onDismissRequest = { nearbyDialog = false },
+            confirmButton = {
+                if (nearby.active) TextButton(onClick = { onStopNearby(); nearbyDialog = false }) { Text(tr("Остановить", "Stop")) }
+                else TextButton(onClick = { requestNearby() }) { Text(tr("Включить", "Enable")) }
             },
-            containerColor = BgPanel
+            dismissButton = { TextButton(onClick = { nearbyDialog = false }) { Text(tr("Закрыть", "Close")) } },
+            title = { Text(tr("Сообщения рядом", "Nearby messages")) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(nearbyStatus(nearby.status), color = if (nearby.status == "connected") OnlineGreen else TextMuted)
+                    Text(
+                        tr("Сообщения без интернета работают только с рядом находящимися устройствами SAssist после явного сопряжения. Текст шифруется ключом комнаты и затем синхронизируется с сервером при появлении сети.", "Offline messages work only with nearby SAssist devices after explicit pairing. Text is encrypted with the room key and syncs to the server when the network returns."),
+                        color = TextMuted, fontSize = 12.sp
+                    )
+                    nearby.pendingPeers.forEach { peer ->
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Text(peer.displayName, color = TextPrimary, modifier = Modifier.weight(1f))
+                            TextButton(onClick = { onAcceptNearby(peer.endpointId) }) { Text(tr("Принять", "Accept")) }
+                            TextButton(onClick = { onRejectNearby(peer.endpointId) }) { Text(tr("Отклонить", "Reject")) }
+                        }
+                    }
+                    nearby.peers.forEach { peer ->
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Text(peer.displayName, color = TextPrimary, modifier = Modifier.weight(1f))
+                            TextButton(onClick = { onConnectNearby(peer.endpointId) }) { Text(tr("Сопрячь", "Pair")) }
+                        }
+                    }
+                    if (nearby.active && nearby.peers.isEmpty() && nearby.pendingPeers.isEmpty()) {
+                        Text(tr("Ищем устройства SAssist поблизости…", "Searching for nearby SAssist devices…"), color = TextMuted, fontSize = 12.sp)
+                    }
+                }
+            }, containerColor = BgPanel
         )
     }
 
@@ -132,10 +187,7 @@ fun ChatsListScreen(
             confirmButton = { TextButton(onClick = { onServer(url); serverDialog = false }) { Text(tr("Сохранить", "Save")) } },
             dismissButton = { TextButton(onClick = { serverDialog = false }) { Text(tr("Отмена", "Cancel")) } },
             title = { Text(tr("Адрес сервера", "Server URL")) },
-            text = {
-                OutlinedTextField(value = url, onValueChange = { url = it }, singleLine = true,
-                    placeholder = { Text("ws://10.0.2.2:8080") })
-            },
+            text = { OutlinedTextField(value = url, onValueChange = { url = it }, singleLine = true, placeholder = { Text("ws://10.0.2.2:8080") }) },
             containerColor = BgPanel
         )
     }
@@ -180,4 +232,15 @@ private fun connLabel(s: ConnState): String = when (s) {
     ConnState.Connecting -> tr("подключение…", "connecting…")
     ConnState.Error -> tr("ошибка подключения", "connection error")
     ConnState.Disconnected -> tr("не в сети", "offline")
+}
+
+@Composable
+private fun nearbyStatus(status: String): String = when (status) {
+    "discovering" -> tr("Поиск устройств поблизости…", "Searching for nearby devices…")
+    "pairing" -> tr("Ожидание подтверждения сопряжения", "Waiting for pairing approval")
+    "connected" -> tr("Устройство подключено", "Device connected")
+    "connection_failed" -> tr("Не удалось подключить устройство", "Could not connect device")
+    "send_failed" -> tr("Не удалось отправить через Bluetooth", "Bluetooth send failed")
+    "unavailable" -> tr("Bluetooth или сервис Nearby недоступен", "Bluetooth or Nearby service unavailable")
+    else -> tr("Bluetooth выключен", "Bluetooth is off")
 }

@@ -43,10 +43,16 @@ interface MessageDao {
     @Query("DELETE FROM messages WHERE clientId = :clientId AND (isPending = 1 OR isFailed = 1)")
     suspend fun deleteUnsentByClientId(clientId: String)
 
+    @Query("DELETE FROM messages WHERE clientId = :clientId")
+    suspend fun deleteByClientId(clientId: String)
+
+    @Query("SELECT * FROM messages WHERE clientId = :clientId LIMIT 1")
+    suspend fun getByClientId(clientId: String): LocalMessage?
+
     /** Server echo arrived: replace the optimistic local row with the server copy. */
     @Transaction
     suspend fun reconcile(clientId: String, serverMsg: LocalMessage) {
-        deleteUnsentByClientId(clientId)
+        deleteByClientId(clientId)
         insert(serverMsg)
     }
 

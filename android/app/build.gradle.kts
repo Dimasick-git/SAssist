@@ -76,6 +76,7 @@ dependencies {
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
     implementation("io.coil-kt:coil-compose:2.6.0")
     implementation("androidx.work:work-runtime-ktx:2.9.1")
+    implementation("com.google.android.gms:play-services-nearby:19.4.0")
 
     // Room
     val roomVersion = "2.6.1"

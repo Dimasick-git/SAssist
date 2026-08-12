@@ -87,7 +87,11 @@ class MainActivity : ComponentActivity() {
                             onOpen = { vm.openChannel(it) }, onScripts = { vm.openScripts() },
                             onProfile = { vm.openProfile() },
                             onLogout = { vm.logout() }, onServer = { vm.setServerUrl(it) },
-                            onLanguage = { vm.setLanguage(it) }
+                            onLanguage = { vm.setLanguage(it) },
+                            nearby = state.nearby,
+                            onStartNearby = { vm.startNearby() }, onStopNearby = { vm.stopNearby() },
+                            onConnectNearby = { vm.connectNearby(it) }, onAcceptNearby = { vm.acceptNearby(it) },
+                            onRejectNearby = { vm.rejectNearby(it) }
                         )
                         Stage.Chat -> ChatScreen(
                             channels = state.channels, currentChannel = state.currentChannel,

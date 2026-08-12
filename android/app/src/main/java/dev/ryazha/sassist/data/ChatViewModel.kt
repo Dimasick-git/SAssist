@@ -23,6 +23,8 @@ import dev.ryazha.sassist.net.AuthApi
 import dev.ryazha.sassist.net.ChatClient
 import dev.ryazha.sassist.net.ConnectivityObserver
 import dev.ryazha.sassist.net.MediaApi
+import dev.ryazha.sassist.nearby.NearbyMessenger
+import dev.ryazha.sassist.nearby.NearbyPeer
 import dev.ryazha.sassist.script.ScriptEngine
 import dev.ryazha.sassist.script.ScriptHost
 import dev.ryazha.sassist.work.SendQueueWorker
@@ -71,6 +73,13 @@ data class PublicProfileUi(
     val error: String? = null
 )
 
+data class NearbyUi(
+    val active: Boolean = false,
+    val status: String = "stopped",
+    val peers: List<NearbyPeer> = emptyList(),
+    val pendingPeers: List<NearbyPeer> = emptyList()
+)
+
 data class ChatState(
     val stage: Stage = Stage.Welcome,
     val connState: ConnState = ConnState.Disconnected,
@@ -98,6 +107,7 @@ data class ChatState(
     val customKeyChannels: Set<String> = emptySet(),
     val recording: Boolean = false,
     val recordingStartedAt: Long = 0L,
+    val nearby: NearbyUi = NearbyUi(),
     val namesById: Map<String, String> = emptyMap()
 ) {
     val messages: List<ChatMessage> get() = messagesByChannel[currentChannel] ?: emptyList()
@@ -117,6 +127,14 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     private var reconnectJob: Job? = null
     private var welcomeTimeoutJob: Job? = null
     private var backoffMs = 1_000L
+    private val nearby = NearbyMessenger(
+        app,
+        onPeers = { peers, pending ->
+            _state.update { it.copy(nearby = it.nearby.copy(peers = peers, pendingPeers = pending)) }
+        },
+        onStatus = { status -> _state.update { it.copy(nearby = it.nearby.copy(status = status)) } },
+        onPayload = { raw -> receiveNearbyPayload(raw) }
+    )
 
     private val recorder = VoiceRecorder(app)
     val voicePlayer = VoicePlayer(viewModelScope)
@@ -517,6 +535,23 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     fun closeScripts() { _state.update { it.copy(stage = it.returnStage) } }
     fun toggleCode() { _state.update { it.copy(codeMode = !it.codeMode) } }
 
+    fun startNearby() {
+        nearby.start("SAssist " + _state.value.username.ifBlank { "device" })
+        _state.update { it.copy(nearby = it.nearby.copy(active = true)) }
+        viewModelScope.launch(Dispatchers.IO) {
+            messageDao.getPendingMessages().forEach { sendNearbyFrame(it) }
+        }
+    }
+
+    fun stopNearby() {
+        nearby.stop()
+        _state.update { it.copy(nearby = NearbyUi()) }
+    }
+
+    fun connectNearby(endpointId: String) = nearby.requestConnection(endpointId)
+    fun acceptNearby(endpointId: String) = nearby.accept(endpointId)
+    fun rejectNearby(endpointId: String) = nearby.reject(endpointId)
+
     fun startReply(m: ChatMessage) { _state.update { it.copy(replyingTo = m) } }
     fun cancelReply() { _state.update { it.copy(replyingTo = null) } }
 
@@ -576,8 +611,43 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                 messageDao.bumpAttempts(local.id)
                 sendFrame(local)
             } else {
+                if (media == null) sendNearbyFrame(local)
                 scheduleBackgroundFlush()
             }
+        }
+    }
+
+    /** Sends the same E2EE body through paired nearby devices; server sync remains queued. */
+    private fun sendNearbyFrame(m: LocalMessage): Boolean {
+        if (m.mediaJson != null) return false
+        val body = if (_state.value.e2ee && m.text.isNotEmpty()) E2ee.encrypt(m.text, session.roomKey(m.channel)) else m.text
+        val frame = JSONObject()
+            .put("type", "nearbyMessage")
+            .put("clientId", m.clientId)
+            .put("channel", m.channel)
+            .put("body", body)
+            .put("userId", m.userId)
+            .put("username", m.username)
+            .put("ts", m.ts)
+        return nearby.send(frame.toString())
+    }
+
+    private fun receiveNearbyPayload(raw: String) {
+        val frame = try { JSONObject(raw) } catch (_: Exception) { return }
+        if (frame.optString("type") != "nearbyMessage") return
+        val clientId = frame.optString("clientId")
+        val channel = frame.optString("channel")
+        if (clientId.isBlank() || channel.isBlank()) return
+        viewModelScope.launch(Dispatchers.IO) {
+            if (messageDao.getByClientId(clientId) != null) return@launch
+            val text = E2ee.decrypt(frame.optString("body"), session.roomKey(channel))
+            val nearbyMessage = LocalMessage(
+                id = "nearby_$clientId", clientId = clientId, channel = channel,
+                userId = frame.optString("userId"), username = frame.optString("username", "SAssist"),
+                text = text, ts = frame.optLong("ts", System.currentTimeMillis())
+            )
+            messageDao.insert(nearbyMessage)
+            rememberName(nearbyMessage.userId, nearbyMessage.username)
         }
     }
 
