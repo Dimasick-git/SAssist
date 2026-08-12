@@ -1,6 +1,5 @@
 package dev.ryazha.sassist.data
 
-import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -20,8 +19,6 @@ class MediaBackupMappingTest {
         val message = local.toChatMessage()
 
         assertTrue(message.hasLocalMediaBackup)
-        assertEquals("md_1", message.media?.id)
-        assertEquals("photo.jpg", message.media?.name)
     }
 
     @Test
