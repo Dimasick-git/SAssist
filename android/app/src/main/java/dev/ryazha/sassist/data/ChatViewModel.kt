@@ -90,6 +90,8 @@ data class NearbyUi(
 data class ChatState(
     val stage: Stage = Stage.Welcome,
     val connState: ConnState = ConnState.Disconnected,
+    val connLastError: String? = null,
+    val connRetryAtMs: Long? = null,
     val channels: List<String> = listOf("general", "code-help", "showtime"),
     val currentChannel: String = "general",
     val messagesByChannel: Map<String, List<ChatMessage>> = emptyMap(),
@@ -200,7 +202,8 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                         connect(force = true)
                     }
                 } else {
-                    _state.update { it.copy(connState = ConnState.Disconnected) }
+                    reconnectJob?.cancel()
+                    _state.update { it.copy(connState = ConnState.Disconnected, connLastError = "network unavailable", connRetryAtMs = null) }
                 }
             }
         }
@@ -288,7 +291,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         }
         val token = session.token ?: return
         if (session.serverUrl.isBlank()) return
-        _state.update { it.copy(connState = ConnState.Connecting) }
+        _state.update { it.copy(connState = ConnState.Connecting, connLastError = null, connRetryAtMs = null) }
 
         var url = session.serverUrl
         if (url.startsWith("http")) {
@@ -305,19 +308,26 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                 if (client === c) c.send(JSONObject().put("type", "join").put("token", token).toString())
             },
             onText = { if (client === c) handle(it) },
-            onClosed = {
+            onClosed = { code, reason ->
                 if (client === c) {
                     welcomeTimeoutJob?.cancel()
                     client = null
-                    _state.update { it.copy(connState = ConnState.Disconnected) }
+                    _state.update {
+                        val timedOut = it.connState == ConnState.Error && it.connLastError == "welcome timeout"
+                        it.copy(
+                            connState = ConnState.Disconnected,
+                            connLastError = if (timedOut) it.connLastError else
+                                "socket closed ($code)" + reason.takeIf { text -> text.isNotBlank() }?.let { text -> ": $text" }.orEmpty()
+                        )
+                    }
                     scheduleReconnect()
                 }
             },
-            onFailure = {
+            onFailure = { error ->
                 if (client === c) {
                     welcomeTimeoutJob?.cancel()
                     client = null
-                    _state.update { it.copy(connState = ConnState.Error) }
+                    _state.update { it.copy(connState = ConnState.Error, connLastError = error.take(160)) }
                     scheduleReconnect()
                 }
             }
@@ -331,9 +341,17 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         welcomeTimeoutJob = viewModelScope.launch {
             delay(WELCOME_TIMEOUT_MS)
             if (client === c && _state.value.connState == ConnState.Connecting) {
+                _state.update { it.copy(connState = ConnState.Error, connLastError = "welcome timeout") }
                 c.close()
             }
         }
+    }
+
+    /** Starts a fresh connection attempt without waiting for the exponential backoff timer. */
+    fun reconnectNow() {
+        reconnectJob?.cancel()
+        backoffMs = 1_000L
+        connect(force = true)
     }
 
     private fun scheduleReconnect() {
@@ -341,6 +359,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         reconnectJob?.cancel()
         val delayMs = backoffMs + Random.nextLong(0, backoffMs / 2 + 1)
         backoffMs = (backoffMs * 2).coerceAtMost(BACKOFF_MAX_MS)
+        _state.update { it.copy(connRetryAtMs = System.currentTimeMillis() + delayMs) }
         reconnectJob = viewModelScope.launch {
             delay(delayMs)
             if (session.token != null && connectivity.isOnlineNow()) connect()

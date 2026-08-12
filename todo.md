@@ -29,6 +29,6 @@
 - [x] Document the public backend architecture, operational limits, and practical upgrade path for persistent media storage.
 - [x] Publish a v1.0.0 GitHub release with the verified APK and user-facing Russian release notes.
 - [x] Rewrite README and key documentation with a concise English section followed by complete Russian installation and operation guidance.
-- [ ] Add an in-app connection diagnostics panel with manual reconnect and an understandable recovery state for a sleeping public server.
+- [x] Add an in-app connection diagnostics panel with manual reconnect and an understandable recovery state for a sleeping public server.
 - [x] Improve queued media recovery with visible retry status and an actionable error message when a local attachment can no longer be read.
 - [x] Fix attachment rendering and retrieval when a server media URL returns HTTP 404, including a compact unavailable state and safe retry path.

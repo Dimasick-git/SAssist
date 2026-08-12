@@ -50,18 +50,46 @@ private fun formatMillis(ms: Long): String {
 }
 
 @Composable
-fun ConnBanner(connState: ConnState) {
+fun ConnBanner(connState: ConnState, lastError: String?, onReconnect: () -> Unit) {
     if (connState == ConnState.Connected) return
-    val (text, color) = when (connState) {
-        ConnState.Connecting -> tr("Подключение…", "Connecting…") to Color(0xFFFAA61A)
-        else -> tr("Не в сети — сообщения отправятся после подключения", "Offline — messages will send when back online") to TextMuted
+    val (title, detail, color) = when (connState) {
+        ConnState.Connecting -> Triple(
+            tr("Подключаемся к серверу…", "Connecting to server…"),
+            tr("Бесплатный сервер может просыпаться до минуты. Не закрывайте приложение.", "The free server can take up to a minute to wake. Keep the app open."),
+            Color(0xFFFAA61A)
+        )
+        ConnState.Error -> Triple(
+            tr("Не удалось подключиться", "Could not connect"),
+            connectionDetail(lastError) ?: tr("Попробуйте переподключиться или проверьте интернет.", "Try reconnecting or check your network."),
+            Color(0xFFED4245)
+        )
+        ConnState.Disconnected -> Triple(
+            tr("Нет подключения", "Offline"),
+            connectionDetail(lastError) ?: tr("Сообщения сохранятся и отправятся после подключения.", "Messages will be saved and sent after reconnecting."),
+            TextMuted
+        )
+        ConnState.Connected -> return
     }
-    Box(
-        Modifier.fillMaxWidth().background(BgPanel).padding(vertical = 4.dp),
-        contentAlignment = Alignment.Center
+    Row(
+        Modifier.fillMaxWidth().background(BgPanel).padding(start = 12.dp, end = 6.dp, top = 5.dp, bottom = 5.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(text, color = color, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+        Column(Modifier.weight(1f)) {
+            Text(title, color = color, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+            Text(detail, color = TextMuted, fontSize = 10.sp, lineHeight = 13.sp)
+        }
+        TextButton(onClick = onReconnect) {
+            Text(tr("Повторить", "Reconnect"), color = TgAccent, fontSize = 11.sp)
+        }
     }
+}
+
+@Composable
+private fun connectionDetail(error: String?): String? = when (error) {
+    null, "" -> null
+    "network unavailable" -> tr("Проверьте Wi‑Fi или мобильную сеть.", "Check Wi‑Fi or mobile data.")
+    "welcome timeout" -> tr("Сервер не ответил вовремя. Возможно, он запускается после простоя.", "The server did not respond in time. It may be waking after idle time.")
+    else -> error
 }
 
 @Composable
@@ -74,6 +102,7 @@ fun ChatScreen(
     codeMode: Boolean,
     e2ee: Boolean,
     connState: ConnState,
+    connLastError: String?,
     myUserId: String,
     replyingTo: ChatMessage?,
     uploadBusy: Boolean,
@@ -86,6 +115,7 @@ fun ChatScreen(
     mediaUrl: (String) -> String,
     nameOf: (String) -> String,
     onChannel: (String) -> Unit,
+    onReconnect: () -> Unit,
     onToggleCode: () -> Unit,
     onSend: (String) -> Unit,
     onSendMedia: (Uri) -> Unit,
@@ -189,7 +219,7 @@ fun ChatScreen(
             }
         }
 
-        ConnBanner(connState)
+        ConnBanner(connState, connLastError, onReconnect)
 
         // Channel rail
         Row(

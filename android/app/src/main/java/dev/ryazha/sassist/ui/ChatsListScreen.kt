@@ -38,9 +38,11 @@ fun ChatsListScreen(
     avatarUrl: String?,
     channels: List<String>,
     connState: ConnState,
+    connLastError: String?,
     presence: Map<String, Int>,
     preview: (String) -> String,
     onOpen: (String) -> Unit,
+    onReconnect: () -> Unit,
     onScripts: () -> Unit,
     onProfile: () -> Unit,
     onLogout: () -> Unit,
@@ -115,7 +117,7 @@ fun ChatsListScreen(
             }
         }
 
-        ConnBanner(connState)
+        ConnBanner(connState, connLastError, onReconnect)
         Text(
             "  " + tr("Каналы", "Channels"), color = TextMuted, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
             modifier = Modifier.padding(start = 16.dp, top = 14.dp, bottom = 6.dp)

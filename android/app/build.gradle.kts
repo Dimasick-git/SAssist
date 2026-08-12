@@ -93,3 +93,9 @@ dependencies {
     debugImplementation("androidx.compose.ui:ui-tooling")
     testImplementation("junit:junit:4.13.2")
 }
+
+// The repository workflow already invokes assembleRelease. Make that release
+// gate compile and execute local unit tests before it produces an APK.
+tasks.named("assembleRelease") {
+    dependsOn("testReleaseUnitTest")
+}

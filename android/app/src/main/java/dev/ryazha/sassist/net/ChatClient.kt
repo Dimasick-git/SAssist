@@ -11,7 +11,7 @@ import java.util.concurrent.TimeUnit
 class ChatClient(
     private val onOpen: () -> Unit,
     private val onText: (String) -> Unit,
-    private val onClosed: () -> Unit,
+    private val onClosed: (Int, String) -> Unit,
     private val onFailure: (String) -> Unit
 ) {
     private val client = OkHttpClient.Builder()
@@ -27,7 +27,7 @@ class ChatClient(
         ws = client.newWebSocket(req, object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) { onOpen() }
             override fun onMessage(webSocket: WebSocket, text: String) { onText(text) }
-            override fun onClosed(webSocket: WebSocket, code: Int, reason: String) { onClosed() }
+            override fun onClosed(webSocket: WebSocket, code: Int, reason: String) { onClosed(code, reason) }
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
                 onFailure(t.message ?: "ws failure")
             }
