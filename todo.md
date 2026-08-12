@@ -14,7 +14,7 @@
 - [x] Add a user-selectable profile banner with persistent media storage and readable automatic color fallbacks.
 - [x] Add tappable chat identities that open public user profiles with an action to start a private conversation.
 - [x] Extend the transport and storage model for private E2EE conversations routed by the server without plaintext access.
-- [ ] Add regression coverage for profile media and private conversation routing, then verify the Android release build.
+- [x] Add regression coverage for profile media and private conversation routing, then verify the Android release build.
 - [x] Apply the SAssist Labs organization name consistently to Android-facing branding and server documentation.
 - [x] Prepare provider-ready configuration and deployment documentation for a free no-card SAssist Labs backend.
 - [x] Reconfigure the deployment path for a free no-card tier and document its non-persistent storage limitation.
